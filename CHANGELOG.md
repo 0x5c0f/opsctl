@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `config.example.toml` 配置模板
 - musl 静态构建与 GitHub Actions tag 发布流程
 
+### Fixed
+
+- 证书测试改为内嵌 PEM，CI 不再依赖 `/tmp/test_cert.pem`
+- 移除 `opsctl-cert` 对 `opsctl-notify` 的未使用依赖
+
 ### Changed
 
 - 仓库整理为标准化 Rust workspace 结构，crate 上移到根目录

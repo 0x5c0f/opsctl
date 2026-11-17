@@ -820,7 +820,6 @@ dependencies = [
  "dirs",
  "md-5",
  "opsctl-core",
- "opsctl-notify",
  "serde",
  "serde_json",
  "sha2",

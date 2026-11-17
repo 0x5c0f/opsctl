@@ -118,7 +118,29 @@ fn is_leap(year: i64) -> bool {
 mod tests {
     use super::*;
 
-    const TEST_PEM: &str = include_str!("/tmp/test_cert.pem");
+    // 内嵌测试证书（CN=test.example.com，SAN=api.example.com/www.example.com）。
+    // 不依赖 CI/本机 /tmp 文件，保证测试在干净环境可重复运行。
+    const TEST_PEM: &str = r#"-----BEGIN CERTIFICATE-----
+MIIDRTCCAi2gAwIBAgIUOdzVDjRRdA5gTE2YpUJzAyXRDBUwDQYJKoZIhvcNAQEL
+BQAwGzEZMBcGA1UEAwwQdGVzdC5leGFtcGxlLmNvbTAeFw0yNjExMTcxMTI3MTZa
+Fw0yNzExMTcxMTI3MTZaMBsxGTAXBgNVBAMMEHRlc3QuZXhhbXBsZS5jb20wggEi
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCl1LPngyiir93FidD6g0yykWGV
+Y1SuwdG14l/pzvWjtf7QVd/gcVlrJdeyj0Y9wr83WJIpNf3omKk3NAiZScEPN8+0
+STLPvrbaSw3twJ19szHtHnnD/2VqsgJmRXyCURXErVBo8S1fmxPbjjO51wW1sBO7
+//mo0IMTm5W4vKY5DBKoBF4Chiot/L1NaaW5+EkAZLwhZ9/sbYw+7QP37nfM3DGx
+8/IplYEZrfLg6kIDxG+SiIDOa5OxqZNew1Gs+UC5Dh4xjtc9ljmnnZAutfJEWzRy
+TTPA4jry0ohP1O7BKOKC/engnH41eaM+2iObzIJbhSTRJOdN97x72s1CbmqrAgMB
+AAGjgYAwfjAdBgNVHQ4EFgQUNADKki4xD26BAnhoAlIT7Psd1HMwHwYDVR0jBBgw
+FoAUNADKki4xD26BAnhoAlIT7Psd1HMwDwYDVR0TAQH/BAUwAwEB/zArBgNVHREE
+JDAigg9hcGkuZXhhbXBsZS5jb22CD3d3dy5leGFtcGxlLmNvbTANBgkqhkiG9w0B
+AQsFAAOCAQEAlPr5GnB//oBjGWucbGC0dxDWKMLxGsRXLSwkrc3rrSmnoUohGAd9
+0Kw4dK1omZ6pJndQoog5cb05vqw6IQAhvYhn0ACqyKKtd8T0jMj6+m9qQc+uh0r+
+AEg2pGAWAOkEn/M/HDBCX2aXkU5mtxVSFEcFLMFRaevAsNkJ0Y2OH9dLI34Si4Zc
+iCtzSK2Mpzh5S7YlPF6tXfVP8RsKNGuq/uxEoYKSXsNA1S7MuhrnavgaKxTEGvxq
+o7SYxzUgfAxnsvo9TX5oNY3nh6otN/nwuC5+lMVTe1XM2VulU20tzAqGIMz8mKC9
+9+YhzQBfNiAVW2HKQl5NbHaGpwQ/OyeGoA==
+-----END CERTIFICATE-----
+"#;
 
     #[test]
     fn test_parse_valid_pem() {

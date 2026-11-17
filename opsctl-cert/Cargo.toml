@@ -7,7 +7,6 @@ repository.workspace = true
 
 [dependencies]
 opsctl-core = { path = "../opsctl-core" }
-opsctl-notify = { path = "../opsctl-notify" }
 ureq = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
