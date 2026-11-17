@@ -1,0 +1,20 @@
+[package]
+name = "opsctl-cert"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+opsctl-core = { path = "../opsctl-core" }
+opsctl-notify = { path = "../opsctl-notify" }
+ureq = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+x509-parser = { version = "0.17", features = ["verify"] }
+md-5 = "0.10"
+base64 = "0.22"
+sha2 = { workspace = true }
+dirs = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

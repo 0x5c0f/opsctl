@@ -1,0 +1,77 @@
+# opsctl 全局配置示例
+# 复制为 ~/.opsctl/config.toml 后按实际环境修改。
+# 若包含凭据，请务必执行: chmod 600 ~/.opsctl/config.toml
+
+# 日志级别: error | warn | info | debug | trace
+# log_level = "info"
+
+# ── 通知 ──────────────────────────────────────────────────────
+# 可配置多个 webhook；单个平台失败不影响其他平台。
+# [[notify.webhooks]]
+# type = "wework"   # wework | dingtalk | feishu | slack
+# url  = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
+#
+# [[notify.webhooks]]
+# type = "slack"
+# url  = "https://hooks.slack.com/services/xxx/yyy/zzz"
+
+# ── SSL 证书 ──────────────────────────────────────────────────
+[cert]
+# certd 平台地址（使用 cert update 时必填）
+# certd_base_url = "http://127.0.0.1:7001"
+# certd_key_id = "your-key-id"
+# certd_key_secret = "your-key-secret"
+# cert_ids = [1, 2, 3]
+# cert_dir = "/opt/certs"
+# formats = ["crt", "key"]   # crt/key/ic/oc/pfx/der/jks/one
+#
+# [cert.check]
+# warn_days = 30
+# expired_check = true
+# notification = true
+#
+# [cert.domain_reload_commands]
+# "example.com" = "systemctl reload nginx"
+
+# ── 部署 ──────────────────────────────────────────────────────
+[deploy.defaults]
+# base_dir = "/data/autoDeploy"
+
+[deploy.defaults.health_check]
+timeout = 30
+
+# [[deploy.projects]]
+# name = "myapp"
+# type = "static"                 # static | dynamic | docker
+# command = "systemctl reload nginx"
+# health_check_url = "https://example.com"
+# keep_versions = 5
+# www_uid = 1010
+# www_gid = 1010
+# upload_dir = "/data/autoDeploy/uploads"
+# ready_dir = "/data/autoDeploy/ready"
+# enabled_dir = "/data/autoDeploy/enabled"
+
+# ── DNS 多平台解析管理 ────────────────────────────────────────
+# 第一版支持: aliyun / dnspod（国内站）/ cloudflare
+# 纯实时调用平台 API，无本地缓存与对账。
+# 凭据明文保存在本文件，请严格控制文件权限。
+[dns]
+notify = "failure"   # none | failure | all
+
+# [[dns.accounts]]
+# name = "aliyun-prod"
+# provider = "aliyun"
+# access_key_id = "LTAI..."
+# access_key_secret = "..."
+
+# [[dns.accounts]]
+# name = "dnspod-prod"
+# provider = "dnspod"
+# secret_id = "AKID..."
+# secret_key = "..."
+
+# [[dns.accounts]]
+# name = "cf-prod"
+# provider = "cloudflare"
+# api_token = "..."

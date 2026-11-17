@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-unknown-linux-musl
+  ASSET: opsctl-x86_64-unknown-linux-musl
+
+jobs:
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.check.outputs.valid }}
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - name: Check tag format
+        id: check
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            if [[ "$TAG" == *-rc.* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Tag $TAG 将发布为预发布版本"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Tag $TAG 将发布为正式版本"
+            fi
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag $TAG 不符合 vX.Y.Z 或 vX.Y.Z-rc.N 规范，已忽略"
+          fi
+
+  build:
+    name: Build static binary
+    needs: validate
+    if: needs.validate.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Cargo version matches tag
+        env:
+          EXPECTED_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          echo "cargo_version=$CARGO_VERSION"
+          echo "tag_version=$EXPECTED_VERSION"
+          if [[ "$CARGO_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "::error::Cargo 版本 $CARGO_VERSION 与 tag 版本 $EXPECTED_VERSION 不一致"
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Prepare release assets
+        run: |
+          cp "target/$TARGET/release/opsctl" "$ASSET"
+          chmod +x "$ASSET"
+          sha256sum "$ASSET" > "$ASSET.sha256"
+          file "$ASSET"
+          cat "$ASSET.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: ${{ needs.validate.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256

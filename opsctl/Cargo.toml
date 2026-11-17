@@ -1,0 +1,21 @@
+[package]
+name = "opsctl"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "opsctl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
+serde_json = { workspace = true }
+opsctl-cert = { path = "../opsctl-cert" }
+opsctl-core = { path = "../opsctl-core" }
+opsctl-deploy = { path = "../opsctl-deploy" }
+opsctl-dns = { path = "../opsctl-dns" }
+opsctl-notify = { path = "../opsctl-notify" }
+tracing = "0.1"
