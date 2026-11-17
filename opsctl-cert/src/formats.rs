@@ -1,64 +1,71 @@
 use std::path::Path;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sha2::{Sha256, Digest};
 
 /// 证书各部分数据
 pub struct CertParts {
-    pub crt: String,   // 完整证书链 (fullchain)
-    pub key: String,   // 私钥
-    pub ic: Option<String>,  // 中间证书
-    pub oc: Option<String>,  // 服务器证书
+    pub crt: String,        // 完整证书链 (fullchain)
+    pub key: String,        // 私钥
+    pub ic: Option<String>, // 中间证书
+    pub oc: Option<String>, // 服务器证书
+    pub pfx: Option<String>, // PFX 格式，Base64 编码
+    pub der: Option<String>, // DER 格式，Base64 编码
+    pub jks: Option<String>, // JKS 格式，Base64 编码
+    pub p7b: Option<String>, // P7B 格式，Base64 编码
 }
 
 /// 证书格式输出
 ///
-/// 支持的格式:
-/// - crt: 完整证书链 → fullchain.cer（来自 crt 字段）
-/// - key: 私钥 → <domain>.key（来自 key 字段）
-/// - ic: 中间证书 → <domain>.ic（来自 ic 字段，与 Python 一致）
-/// - oc: 服务器证书 → <domain>.cer（来自 oc 字段，与 Python 一致）
-/// - pfx: PKCS#12 → pfx.txt（转换说明）
-/// - der: DER 格式 → <domain>.der
-/// - jks: Java KeyStore → jks.txt（转换说明）
-/// - one: 一站式证书 → one.txt（crt + key 合并）
-pub fn write_format(parts: &CertParts, format: &str, domain_dir: &Path, domain: &str) -> Result<(), crate::CertError> {
+/// 支持格式:
+/// - crt: 完整证书链 → fullchain.cer
+/// - key: 私钥 → <domain>.key
+/// - ic: 中间证书 → <domain>.ic
+/// - oc: 服务器证书 → <domain>.cer
+/// - one: 一站式证书 → <domain>.one（crt + key）
+/// - pfx/der/jks: API 返回的 Base64 内容，解码后写入对应二进制文件
+/// - p7b: API 返回的文本/PEM 内容，直接写入 <domain>.p7b
+pub fn write_format(
+    parts: &CertParts,
+    format: &str,
+    domain_dir: &Path,
+    domain: &str,
+) -> Result<(), crate::CertError> {
     match format {
         "crt" => write_file(domain_dir, "fullchain.cer", parts.crt.as_bytes()),
-        "key" => write_file(domain_dir, &format!("{}.key", domain), parts.key.as_bytes()),
-        "ic" => {
-            if let Some(ref data) = parts.ic {
-                write_file(domain_dir, &format!("{}.ic", domain), data.as_bytes());
-            } else {
+        "key" => write_file(domain_dir, &format!("{domain}.key"), parts.key.as_bytes()),
+        "ic" => match parts.ic.as_deref() {
+            Some(data) => write_file(domain_dir, &format!("{domain}.ic"), data.as_bytes()),
+            None => {
                 tracing::warn!("未收到中间证书 (ic)，跳过");
+                Ok(())
             }
-        }
-        "oc" => {
-            if let Some(ref data) = parts.oc {
-                write_file(domain_dir, &format!("{}.cer", domain), data.as_bytes());
-            } else {
+        },
+        "oc" => match parts.oc.as_deref() {
+            Some(data) => write_file(domain_dir, &format!("{domain}.cer"), data.as_bytes()),
+            None => {
                 tracing::warn!("未收到服务器证书 (oc)，跳过");
+                Ok(())
             }
-        }
+        },
         "one" => {
-            // 一站式: cert + key 拼接
             let combined = format!("{}\n{}", parts.crt, parts.key);
-            write_file(domain_dir, &format!("{}.one", domain), combined.as_bytes());
+            write_file(domain_dir, &format!("{domain}.one"), combined.as_bytes())
         }
-        "pfx" => {
-            let note = format!("PFX format requires openssl conversion:\n  openssl pkcs12 -export -out {}.pfx -inkey {}.key -in fullchain.cer\n", domain, domain);
-            write_file(domain_dir, "pfx.txt", note.as_bytes())
-        }
-        "der" => {
-            write_file(domain_dir, &format!("{}.der", domain), parts.crt.as_bytes())
-        }
-        "jks" => {
-            let note = format!("JKS format requires keytool conversion:\n  keytool -importkeystore -srckeystore {}.pfx -srcstoretype PKCS12 -destkeystore {}.jks -deststoretype JKS\n", domain, domain);
-            write_file(domain_dir, "jks.txt", note.as_bytes())
-        }
+        "pfx" => write_base64(domain_dir, &format!("{domain}.pfx"), parts.pfx.as_deref()),
+        "der" => write_base64(domain_dir, &format!("{domain}.der"), parts.der.as_deref()),
+        "jks" => write_base64(domain_dir, &format!("{domain}.jks"), parts.jks.as_deref()),
+        "p7b" => match parts.p7b.as_deref() {
+            Some(data) => write_file(domain_dir, &format!("{domain}.p7b"), data.as_bytes()),
+            None => {
+                tracing::warn!("API 未返回 p7b，跳过");
+                Ok(())
+            }
+        },
         other => {
-            tracing::warn!("未知证书格式: {}", other);
+            tracing::warn!("未知证书格式: {other}");
+            Ok(())
         }
     }
-    Ok(())
 }
 
 /// 计算文件 SHA256 指纹
@@ -69,12 +76,22 @@ pub fn file_sha256(path: &Path) -> Result<String, crate::CertError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn write_file(dir: &Path, name: &str, data: &[u8]) {
+fn write_base64(domain_dir: &Path, name: &str, data: Option<&str>) -> Result<(), crate::CertError> {
+    let Some(encoded) = data else {
+        tracing::warn!("API 未返回 {name}，跳过");
+        return Ok(());
+    };
+    let decoded = BASE64.decode(encoded).map_err(|e| {
+        crate::CertError::Config(format!("{name} 不是合法 Base64 数据: {e}"))
+    })?;
+    write_file(domain_dir, name, &decoded)
+}
+
+fn write_file(dir: &Path, name: &str, data: &[u8]) -> Result<(), crate::CertError> {
     let path = dir.join(name);
-    match std::fs::write(&path, data) {
-        Ok(_) => tracing::debug!("已写入: {:?}", path),
-        Err(e) => tracing::error!("写入失败 {:?}: {}", path, e),
-    }
+    std::fs::write(&path, data)?;
+    tracing::debug!("已写入: {:?}", path);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -97,6 +114,10 @@ mod tests {
             key: "TEST_KEY".into(),
             ic: Some("TEST_IC".into()),
             oc: Some("TEST_OC".into()),
+            pfx: Some(base64::engine::general_purpose::STANDARD.encode(b"PFXDATA")),
+            der: Some(base64::engine::general_purpose::STANDARD.encode(b"DERDATA")),
+            jks: Some(base64::engine::general_purpose::STANDARD.encode(b"JKSDATA")),
+            p7b: Some("P7BDATA".into()),
         }
     }
 
@@ -142,14 +163,11 @@ mod tests {
     }
 
     #[test]
-    fn test_write_info_format_pfx() {
+    fn test_write_error_propagates() {
         let dp = test_dir();
         let parts = test_parts();
-        write_format(&parts, "pfx", &dp, "example.com").unwrap();
-        let p = dp.join("pfx.txt");
-        assert!(p.exists());
-        let content = std::fs::read_to_string(&p).unwrap();
-        assert!(content.contains("openssl pkcs12"));
+        std::fs::create_dir_all(dp.join("ex.com.key")).unwrap();
+        assert!(write_format(&parts, "key", &dp, "ex.com").is_err());
     }
 
     #[test]
@@ -157,6 +175,33 @@ mod tests {
         let dp = test_dir();
         let parts = test_parts();
         write_format(&parts, "unknown_fmt", &dp, "example.com").unwrap();
+    }
+
+    #[test]
+    fn test_base64_formats_write_decoded_binary() {
+        use base64::Engine as _;
+
+        let dp = test_dir();
+        let parts = test_parts();
+        for fmt in &["pfx", "der", "jks", "p7b"] {
+            write_format(&parts, fmt, &dp, "example.com").unwrap();
+        }
+        assert_eq!(
+            std::fs::read(dp.join("example.com.pfx")).unwrap(),
+            b"PFXDATA"
+        );
+        assert_eq!(
+            std::fs::read(dp.join("example.com.der")).unwrap(),
+            b"DERDATA"
+        );
+        assert_eq!(
+            std::fs::read(dp.join("example.com.jks")).unwrap(),
+            b"JKSDATA"
+        );
+        assert_eq!(
+            std::fs::read(dp.join("example.com.p7b")).unwrap(),
+            b"P7BDATA"
+        );
     }
 
     #[test]

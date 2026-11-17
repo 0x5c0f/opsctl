@@ -27,7 +27,7 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# opsctl 全局配置
 # cert_dir = "/opt/certs"
 #
 # # 启用的证书格式 (crt / key / ic / oc / pfx / der / jks / one)
-# formats = ["crt", "key"]
+# formats = ["crt", "key"]   # crt/key/ic/oc/one 为 PEM 文本；pfx/der/jks 为 Base64 内容；p7b 为文本
 #
 # # 按域名的重启命令
 # [cert.domain_reload_commands]

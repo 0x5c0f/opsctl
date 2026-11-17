@@ -23,7 +23,7 @@
 # certd_key_secret = "your-key-secret"
 # cert_ids = [1, 2, 3]
 # cert_dir = "/opt/certs"
-# formats = ["crt", "key"]   # crt/key/ic/oc/pfx/der/jks/one
+# formats = ["crt", "key"]   # crt/key/ic/oc/one 为 PEM 文本；pfx/der/jks 为 Base64 内容；p7b 为文本
 #
 # [cert.check]
 # warn_days = 30

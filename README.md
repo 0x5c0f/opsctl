@@ -3,7 +3,7 @@
 [![Release](https://github.com/0x5c0f/opsctl/actions/workflows/release.yml/badge.svg)](https://github.com/0x5c0f/opsctl/actions/workflows/release.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`opsctl` 是一个用 Rust 编写的单文件运维 CLI，用来替代分散的 Python/Shell 运维脚本。它把部署、证书管理和多平台 DNS 解析管理统一到一个二进制中，面向 Linux 服务器运维场景，零运行时依赖。
+`opsctl` 是一个用 Rust 编写的单文件运维 CLI，把部署、证书管理和多平台 DNS 解析管理统一到一个二进制中，面向 Linux 服务器运维场景，零运行时依赖。
 
 当前版本：`0.3.0-rc.1`
 
@@ -94,6 +94,14 @@ opsctl deploy init [-p myapp]
 
 锁文件为 `uploads/.{project}.lock`，部署完成后不自动释放；手动删除锁才会触发下一次部署。
 
+三种部署模式：
+
+- `static`：切换 `{project}_latest` 软链接，应用目录始终是 `ready/{version}`，支持回滚
+- `dynamic`：把 ZIP 内容覆盖合并到 `enabled/{project}_latest`，保留目标目录中不属于本次 ZIP 的文件，适合只上传部分 DLL/配置的项目
+- `docker`：不解压 ZIP，只执行重启命令与健康检查
+
+> `dynamic` 与 `docker` 不提供回滚；`opsctl deploy rollback` 仅接受 `static` 项目。命令执行前会进行误操作防护检查，`chown` 只允许在 `/data` 下递归执行。
+
 ### 证书
 
 ```bash
@@ -102,7 +110,9 @@ opsctl cert list
 opsctl cert check [-w 30]
 ```
 
-支持格式：`crt / key / ic / oc / pfx / der / jks / one`。
+默认写入适合 Nginx 的 PEM 文件：`fullchain.cer`、`{domain}.key`、`{domain}.ic`、`{domain}.cer`、`{domain}.one`。
+
+可选格式：`pfx / der / jks / p7b`。`pfx/der/jks` 由服务端返回 Base64 内容，opsctl 解码后写入二进制文件；`p7b` 按服务端返回的文本/PEM 内容写入。默认不下载这些格式。`pfx` 专为后续 Windows/IIS 场景预留。
 
 ### DNS
 

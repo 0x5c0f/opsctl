@@ -26,11 +26,16 @@ pub fn update_certs(config: &opsctl_core::config::CertConfig) -> Result<Vec<Upda
                     key: cert_data.key_pem.clone(),
                     ic: cert_data.ic_pem.clone(),
                     oc: cert_data.oc_pem.clone(),
+                    pfx: cert_data.pfx.clone(),
+                    der: cert_data.der.clone(),
+                    jks: cert_data.jks.clone(),
+                    p7b: cert_data.p7b.clone(),
                 };
                 let cert_info = certificate::parse_pem_certificate(&cert_data.cert_pem)?;
-                let domain = &cert_info.main_domain;
+                let domain = select_primary_domain(&cert_data.detail_domains, &cert_info);
+                let safe_domain = sanitize_domain(&domain);
 
-                let domain_dir = cert_dir.join(domain);
+                let domain_dir = cert_dir.join(&safe_domain);
 
                 // MD5 对比：远程证书 vs 本地已有证书，内容相同则跳过
                 let new_md5 = hash_md5(cert_data.cert_pem.as_bytes());
@@ -65,7 +70,7 @@ pub fn update_certs(config: &opsctl_core::config::CertConfig) -> Result<Vec<Upda
                 };
 
                 for fmt in &formats {
-                    formats::write_format(&parts, fmt, &domain_dir, domain)?;
+                    formats::write_format(&parts, fmt, &domain_dir, &safe_domain)?;
                 }
 
                 // 保存元数据
@@ -194,6 +199,38 @@ fn resolve_cert_dir(config: &opsctl_core::config::CertConfig) -> PathBuf {
     }
 }
 
+fn select_primary_domain(detail_domains: &[String], info: &CertInfo) -> String {
+    detail_domains
+        .iter()
+        .find(|domain| !domain.starts_with("*."))
+        .or_else(|| detail_domains.first())
+        .cloned()
+        .or_else(|| {
+            info.all_domains
+                .iter()
+                .find(|domain| !domain.starts_with("*."))
+                .cloned()
+        })
+        .unwrap_or_else(|| info.main_domain.clone())
+}
+
+fn sanitize_domain(domain: &str) -> String {
+    let mut out = String::with_capacity(domain.len());
+    for ch in domain.chars() {
+        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+            out.push('_');
+        } else {
+            out.push(ch);
+        }
+    }
+    let cleaned = out.trim().trim_matches(['.', ' ']).to_string();
+    if cleaned.is_empty() {
+        "certificate".to_string()
+    } else {
+        cleaned
+    }
+}
+
 fn hash_md5(data: &[u8]) -> String {
     let mut hasher = Md5::new();
     hasher.update(data);
@@ -230,4 +267,44 @@ pub struct CertEntry {
 pub struct CheckResult {
     pub expiring: Vec<CertEntry>,
     pub expired: Vec<CertEntry>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn primary_domain_prefers_non_wildcard_from_detail() {
+        let info = CertInfo {
+            main_domain: "fallback.example.com".into(),
+            all_domains: vec!["fallback.example.com".into()],
+            not_before: String::new(),
+            not_after: String::new(),
+            not_after_timestamp: 0,
+        };
+        let detail = vec![
+            "*.xx.example.com".into(),
+            "xx.example.com".into(),
+            "other.example.com".into(),
+        ];
+        assert_eq!(select_primary_domain(&detail, &info), "xx.example.com");
+    }
+
+    #[test]
+    fn primary_domain_falls_back_to_certificate_info() {
+        let info = CertInfo {
+            main_domain: "test.example.com".into(),
+            all_domains: vec!["test.example.com".into()],
+            not_before: String::new(),
+            not_after: String::new(),
+            not_after_timestamp: 0,
+        };
+        assert_eq!(select_primary_domain(&[], &info), "test.example.com");
+    }
+
+    #[test]
+    fn sanitize_domain_replaces_unsafe_characters() {
+        assert_eq!(sanitize_domain("*.example.com"), "_.example.com");
+        assert_eq!(sanitize_domain("a/b:c"), "a_b_c");
+    }
 }

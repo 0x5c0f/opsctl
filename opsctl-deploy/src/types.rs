@@ -44,7 +44,7 @@ impl DeployContext {
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("enabled"));
 
-        // 锁文件在 uploads/ 下，和 Python 一致
+        // 锁文件在 uploads/ 下，按项目名隔离
         let lock_file = upload_dir.join(format!(".{}.lock", proj.name));
 
         DeployContext {

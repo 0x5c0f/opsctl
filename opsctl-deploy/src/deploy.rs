@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use crate::types::{DeployContext, DeployResult};
 use crate::DeployError;
 
@@ -139,12 +139,13 @@ fn set_ownership(path: &Path, uid: u32, gid: u32) -> Result<(), DeployError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata(path)?;
+        let path = ensure_chown_path_allowed(path)?;
+        let meta = std::fs::metadata(&path)?;
         if meta.uid() != uid || meta.gid() != gid {
             let output = std::process::Command::new("chown")
                 .arg("-R")
                 .arg(format!("{}:{}", uid, gid))
-                .arg(path)
+                .arg(&path)
                 .output()
                 .map_err(|e| DeployError::DeployFailed(format!("chown 执行失败: {e}")))?;
 
@@ -164,10 +165,44 @@ fn set_ownership(path: &Path, uid: u32, gid: u32) -> Result<(), DeployError> {
     Ok(())
 }
 
-pub(crate) fn copy_dir(src: &Path, dst: &Path) -> Result<(), DeployError> {
-    if dst.exists() {
-        std::fs::remove_dir_all(dst)?;
+fn lexical_absolute(path: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")).join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::RootDir => normalized.push("/"),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+        }
     }
+    normalized
+}
+
+fn ensure_chown_path_allowed(path: &Path) -> Result<PathBuf, DeployError> {
+    let resolved = path
+        .canonicalize()
+        .unwrap_or_else(|_| lexical_absolute(path));
+    let allowed_root = Path::new("/data");
+    if resolved == allowed_root || !resolved.starts_with(allowed_root) {
+        return Err(DeployError::DeployFailed(format!(
+            "拒绝在允许目录外设置所有权: {:?}（允许根路径: /data）",
+            resolved
+        )));
+    }
+    Ok(resolved)
+}
+
+pub(crate) fn copy_dir(src: &Path, dst: &Path) -> Result<(), DeployError> {
     std::fs::create_dir_all(dst)?;
 
     for entry in walkdir(src)? {
@@ -204,4 +239,52 @@ fn walkdir_inner(dir: &Path, entries: &mut Vec<std::fs::DirEntry>) -> Result<(),
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("opsctl_deploy_{name}_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn copy_dir_merges_without_deleting_existing_files() {
+        let src = temp_dir("src");
+        let dst = temp_dir("dst");
+        std::fs::write(src.join("new.dll"), b"new").unwrap();
+        std::fs::write(dst.join("keep.txt"), b"keep").unwrap();
+
+        copy_dir(&src, &dst).unwrap();
+
+        assert_eq!(std::fs::read_to_string(dst.join("new.dll")).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(dst.join("keep.txt")).unwrap(), "keep");
+
+        let _ = std::fs::remove_dir_all(src);
+        let _ = std::fs::remove_dir_all(dst);
+    }
+}
+
+#[cfg(test)]
+mod chown_tests {
+    use super::*;
+
+    #[test]
+    fn chown_allows_data_paths() {
+        assert!(ensure_chown_path_allowed(Path::new("/data/app")).is_ok());
+    }
+
+    #[test]
+    fn chown_rejects_system_paths() {
+        assert!(ensure_chown_path_allowed(Path::new("/bin/app")).is_err());
+        assert!(ensure_chown_path_allowed(Path::new("/usr/local")).is_err());
+        assert!(ensure_chown_path_allowed(Path::new("/data/../etc")).is_err());
+    }
 }

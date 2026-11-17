@@ -4,7 +4,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// certd API 客户端
 ///
-/// 认证协议（与 Python 版 update.ssl.py 保持一致）：
+/// 认证协议：
 /// 1. 构造 JSON: {"keyId":"...","t":<unix_ts>,"encrypt":false,"signType":"md5"}
 /// 2. 签名 = MD5(json_str + keySecret)
 /// 3. Token = base64(json_str) + "." + base64(sign)
@@ -84,36 +84,57 @@ impl CertdClient {
         let ic = data.get("ic").and_then(|v| v.as_str());
         let oc = data.get("oc").and_then(|v| v.as_str());
 
+        let pfx = data.get("pfx").and_then(|v| v.as_str()).map(String::from);
+        let der = data.get("der").and_then(|v| v.as_str()).map(String::from);
+        let jks = data.get("jks").and_then(|v| v.as_str()).map(String::from);
+        let p7b = data.get("p7b").and_then(|v| v.as_str()).map(String::from);
+
         // 从 detail 中提取过期时间戳（API 直接返回，比 x509 解析更可靠）
-        let not_after_ts = data.get("detail")
+        let detail = data.get("detail");
+        let not_after_ts = detail
             .and_then(|d| d.get("notAfter"))
             .and_then(|t| t.as_u64());
+        let detail_domains = detail
+            .and_then(|d| d.get("domains"))
+            .and_then(|d| d.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         Ok(CertResponseData {
             cert_pem: cert_pem.to_string(),
             key_pem: key_pem.to_string(),
             ic_pem: ic.map(String::from),
             oc_pem: oc.map(String::from),
+            pfx,
+            der,
+            jks,
+            p7b,
             not_after_ts,
+            detail_domains,
         })
     }
 
-    /// 生成 x-certd-token（与 Python 版 generate_token 算法一致）
-    fn generate_token(&self) -> Result<String, crate::CertError> {
+pub(crate) fn build_token_content(key_id: &str, timestamp: u64) -> String {
+    let escaped_key_id = serde_json::to_string(key_id).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        "{{\"keyId\":{escaped_key_id},\"t\":{timestamp},\"encrypt\":false,\"signType\":\"md5\"}}"
+    )
+}
+
+/// 生成 x-certd-token
+fn generate_token(&self) -> Result<String, crate::CertError> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| crate::CertError::Api(format!("时间错误: {e}")))?
             .as_secs();
 
-        // 1. 构造 JSON 内容（注意字段顺序和 ensure_ascii）
-        let content = serde_json::json!({
-            "keyId": self.key_id,
-            "t": timestamp,
-            "encrypt": false,
-            "signType": "md5",
-        });
-        let content_str = serde_json::to_string(&content)
-            .map_err(|e| crate::CertError::Api(format!("JSON 序列化失败: {e}")))?;
+        let content_str = Self::build_token_content(&self.key_id, timestamp);
 
         // 2. 签名 = MD5(content_str + keySecret)
         let sign_input = format!("{}{}", content_str, self.key_secret);
@@ -136,6 +157,32 @@ pub struct CertResponseData {
     pub key_pem: String,
     pub ic_pem: Option<String>,
     pub oc_pem: Option<String>,
+    pub pfx: Option<String>,
+    pub der: Option<String>,
+    pub jks: Option<String>,
+    pub p7b: Option<String>,
     /// API 直接返回的过期时间戳 (detail.notAfter)
     pub not_after_ts: Option<u64>,
+    pub detail_domains: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_content_uses_documented_field_order() {
+        assert_eq!(
+            CertdClient::build_token_content("key-123", 1_700_000_000),
+            r#"{"keyId":"key-123","t":1700000000,"encrypt":false,"signType":"md5"}"#
+        );
+    }
+
+    #[test]
+    fn token_content_escapes_key_id() {
+        assert_eq!(
+            CertdClient::build_token_content("a\"b", 1),
+            r#"{"keyId":"a\"b","t":1,"encrypt":false,"signType":"md5"}"#
+        );
+    }
 }

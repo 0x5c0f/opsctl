@@ -21,6 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 证书测试改为内嵌 PEM，CI 不再依赖 `/tmp/test_cert.pem`
 - 移除 `opsctl-cert` 对 `opsctl-notify` 的未使用依赖
+- `dynamic` 部署改为覆盖合并，保留目标目录中未被本次 ZIP 覆盖的文件
+- 回滚仅允许 `static` 项目，避免错误地将 dynamic/docker 目录替换为软链接
+- 重启命令检查增加危险元字符、安全白名单与黑名单兜底
+- `chown` 限制在 `/data` 目录下执行，避免误改系统目录权限
+- certd token 固定为官方字段顺序
+- pfx/der/jks 按官方 Base64 返回正确解码落盘，p7b 按文本/PEM 写入
+- 证书主域名优先从 `detail.domains` 选择非通配符域名，并清洗目录名
+- 证书获取、保存、重启命令失败均发送通知
 
 ### Changed
 

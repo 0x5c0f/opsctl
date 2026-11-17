@@ -14,19 +14,24 @@ pub fn handle_update(global_cfg: &GlobalConfig, cert_id: Option<u32>) {
 
     match opsctl_cert::update_certs(&cert_config) {
         Ok(results) => {
-            let mut changed_count = 0usize;
+            let mut changed_lines = Vec::new();
+            let mut failed_lines = Vec::new();
+
             for r in &results {
                 if !r.success {
                     eprintln!("❌ [{}] {}", r.domain, r.message);
-                } else if r.changed {
-                    changed_count += 1;
+                    failed_lines.push(format!("❌ {} — {}", r.domain, r.message));
+                    continue;
+                }
+                if r.changed {
                     println!("✅ [{}] {}", r.domain, r.message);
-                    // 触发重启命令
+                    changed_lines.push(format!("✅ {} — {}", r.domain, r.message));
                     if let Some(ref cmd) = global_cfg.cert.domain_reload_commands.get(&r.domain) {
                         tracing::info!("执行重启命令: {} (domain={})", cmd, r.domain);
                         if let Err(e) = execute_restart_command(cmd) {
                             tracing::error!("重启命令执行失败 ({}): {}", r.domain, e);
                             eprintln!("  ⚠️ 重启命令失败: {}", e);
+                            failed_lines.push(format!("⚠️ {} 重启命令失败 — {}", r.domain, e));
                         }
                     }
                 } else {
@@ -34,24 +39,39 @@ pub fn handle_update(global_cfg: &GlobalConfig, cert_id: Option<u32>) {
                 }
             }
 
-            // 仅变更时发送通知
-            if changed_count > 0 {
-                let notifier = opsctl_notify::NotifyManager::from_config(&global_cfg.notify.webhooks);
-                if !notifier.is_empty() {
-                    let changed: Vec<_> = results.iter().filter(|r| r.changed).collect();
-                    let title = format!("cert update ({}/{})", changed_count, changed.len());
-                    let msg = changed.iter()
-                        .map(|r| format!("✅ {} — {}", r.domain, r.message))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    notifier.send_all(&title, &msg);
-                }
+            if !changed_lines.is_empty() || !failed_lines.is_empty() {
+                let title = cert_update_notification_title(
+                    changed_lines.len(),
+                    failed_lines.len(),
+                );
+                let mut lines = changed_lines;
+                lines.extend(failed_lines);
+                send_cert_notification(global_cfg, &title, &lines);
             }
         }
         Err(e) => {
             eprintln!("❌ 证书更新失败: {e}");
+            send_cert_notification(
+                global_cfg,
+                "cert update failed",
+                &[format!("❌ {e}")],
+            );
             std::process::exit(1);
         }
+    }
+}
+
+pub(crate) fn cert_update_notification_title(changed: usize, failed: usize) -> String {
+    format!("cert update (changed={changed}, failed={failed})")
+}
+
+fn send_cert_notification(global_cfg: &GlobalConfig, title: &str, lines: &[String]) {
+    if lines.is_empty() {
+        return;
+    }
+    let notifier = opsctl_notify::NotifyManager::from_config(&global_cfg.notify.webhooks);
+    if !notifier.is_empty() {
+        notifier.send_all(title, &lines.join("\n"));
     }
 }
 
@@ -134,5 +154,18 @@ pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) {
             eprintln!("错误: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_title_includes_changed_and_failed_counts() {
+        assert_eq!(
+            cert_update_notification_title(2, 1),
+            "cert update (changed=2, failed=1)"
+        );
     }
 }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use opsctl_core::GlobalConfig;
+use opsctl_core::config::DeployType;
 use opsctl_deploy::DeployContext;
 
 /// 处理 `opsctl deploy run`
@@ -133,6 +134,14 @@ fn print_history(basedir: &std::path::Path, project: &str, limit: usize) -> bool
     true
 }
 
+pub(crate) fn rollback_support_error(deploy_type: DeployType) -> Option<&'static str> {
+    match deploy_type {
+        DeployType::Static => None,
+        DeployType::Dynamic => Some("dynamic 模式不支持回滚"),
+        DeployType::Docker => Some("docker 模式不支持回滚"),
+    }
+}
+
 /// 处理 `opsctl deploy rollback`
 pub fn handle_rollback(global_cfg: &GlobalConfig, version_id: &str) {
     let basedir = std::path::Path::new(
@@ -144,13 +153,21 @@ pub fn handle_rollback(global_cfg: &GlobalConfig, version_id: &str) {
         .and_then(|r| r.iter().find(|v| v.id == version_id))
         .map(|v| v.project.clone());
 
+    let project = proj_name
+        .as_ref()
+        .and_then(|name| crate::helpers::find_project(global_cfg, name));
+    if let Some(proj) = project
+        && let Some(reason) = rollback_support_error(proj.deploy_type.clone())
+    {
+        eprintln!("❌ 回滚失败: {reason}");
+        std::process::exit(1);
+    }
+
     match opsctl_deploy::rollback_to(basedir, version_id) {
         Ok(_) => {
             println!("✅ 回滚成功到版本: {}", version_id);
             // 执行重启 + 健康检查
-            if let Some(ref name) = proj_name
-                && let Some(proj) = crate::helpers::find_project(global_cfg, name)
-            {
+            if let Some(proj) = project {
                 let ctx = DeployContext::from_project(proj, basedir);
                 if !ctx.command.is_empty() {
                     tracing::info!("回滚后执行重启: {}", ctx.command);
@@ -207,5 +224,18 @@ fn create_lock(lock_file: &std::path::Path, proj_name: &str) -> bool {
             .unwrap_or_else(|e| { eprintln!("❌ [{}] 创建失败: {e}", proj_name); std::process::exit(1); });
         println!("✅ [{}] 锁文件已创建", proj_name);
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opsctl_core::config::DeployType;
+
+    #[test]
+    fn rollback_is_only_supported_for_static() {
+        assert!(rollback_support_error(DeployType::Static).is_none());
+        assert!(rollback_support_error(DeployType::Dynamic).is_some());
+        assert!(rollback_support_error(DeployType::Docker).is_some());
     }
 }

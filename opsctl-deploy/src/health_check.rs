@@ -1,7 +1,7 @@
 use std::time::Duration;
 use sha2::{Sha256, Digest};
 
-/// 健康检查：HTTP GET + SHA256 指纹，带重试（与 Python 一致）
+/// 健康检查：HTTP GET + SHA256 指纹，带重试
 ///
 /// initial_delay: 首次等待秒数（默认 5s）
 /// max_retries: 最大重试次数（默认 6）
