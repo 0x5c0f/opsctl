@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-version = "0.3.0-rc.1"
+version = "0.3.0-rc.2"
 authors = ["0x5c0f"]
 description = "opsctl — 统一运维工具集"
 license = "Apache-2.0"
