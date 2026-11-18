@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `--json` 序列化失败时返回错误，不再打印空行静默降级
 - handler 不再直接 `std::process::exit`，错误统一冒泡到 `main`（19 处 → 2 处）
 - `main.rs` 收敛到 29 行，分发逻辑移入 `cli::dispatch`
+- `main` 不再把同一条错误同时写入 tracing 与 stderr，用户可见错误只走一条通道
+- workflow step 的 `name:` 改为描述性名称，避免审计工具把标签当作裸命令执行
 
 ### Added
 

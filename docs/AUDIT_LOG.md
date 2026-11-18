@@ -18,8 +18,9 @@ This file tracks the audit history of this specific project:
 
 | Date | Project | Mode | 🔴 | 🟠 | 🟡 | 🔵 | Health | Notes |
 |------|---------|------|-----|-----|-----|-----|--------|-------|
-| 2026-05-25 | opsctl | multi-crate (6 members) | 0 | 1 | 4 | 1 | 🟡 | G1 格式门禁失败（33 文件 / 172 hunk）；S5 cargo-audit 未安装未运行；A3 角色映射为空导致 B/C/D 脚本检查空转 |
+| 2026-11-18 | opsctl | multi-crate (6 members) | 0 | 1 | 4 | 1 | 🟡 | **第一轮**：G1 格式门禁失败（33 文件 / 172 hunk）；S5 cargo-audit 未安装；A3 角色映射为空致 B/C/D 脚本空转 |
 | 2026-11-18 | opsctl | multi-crate (6 members) | 0 | 0 | 1 | 0 | 🟢 | 整改轮：G1/S5/C5/G4/G5 已修复（fmt 收敛 + CI 门禁 + zip 9 / rustls 升级后 audit 清零 + dispatch 抽取 + 工具链 pin）；A3 不处理（角色体系不适用）；C9 部分修复（保留展示层 stdout） |
+| 2026-11-18 | opsctl | multi-crate (6 members) | 0 | 0 | 3 | 0 | 🟢 | **第二轮独立复审**：G1/S5/C5/G4 实测已 RESOLVED；A3、C9、G5 按原严重度 RECURRING（C9 81→60，G5 仅剩 musl 发布构建未复现）；工具缺陷：`ci-gate.sh` 把 `name:` 标签当命令，需从 `docs/AUDIT_REPORT.md` 读自披露段 |
 
 ## Findings Log
 
@@ -70,6 +71,24 @@ finding still matters is the owner's call, not the audit's.
 **Resolved since last audit:** n/a
 **Adversarial pass:** Material gaps found — 修正点：B1 的脚本 pass 属于角色为空导致的空转，改判为“未验证”；C5 从脚本 skipped 补为人工实测发现；C4/C1/C2/S1 的脚本结果经人工复核后确认或标为噪声
 
+
+### 2026-11-18 — 第二轮独立复审（multi-crate）
+
+**Health:** 🟢
+**Key findings:**
+- A3: Medium RECURRING -- 6/6 package 仍未映射到角色，`dep-check.sh` 输出 `roles mapped: ` 为空却报 pass（空转），C4/C5 仍被脚本跳过；C5 与 C3 已由人工核查补齐 @ `config.json`（`crate_roles: {}`）
+- C9: Medium RECURRING -- 60 处 `println!`/`eprintln!`（上一轮 81 处），仍全部在 `opsctl` 二进制 crate；日志层已改为写 stderr，`--json` 的 stdout 污染已解决；`main.rs` 仍存在 `tracing::error!` 与 `eprintln!` 双通道 @ `opsctl/src/{main.rs,helpers.rs,handlers/*.rs}`
+- G5: Medium RECURRING -- `cargo build --release --locked --target x86_64-unknown-linux-musl` 本轮仍未复现（`cargo check --locked` 与 `cargo audit` 已手工执行，退出码 0）。所有者自述已在 Release 验证过该构建，本次审计未观测到该证据，故不记为 resolved @ `.github/workflows/release.yml`
+- 复核确认通过（无发现）：ZIP 解压 `enclosed_name()` + `starts_with` 双重校验并带 `../evil.txt` 负向测试 @ `opsctl-deploy/src/extractor.rs:47`
+- 复核确认通过（无发现）：`--json` 序列化失败已改为返回 `Result` 并带测试 @ `opsctl/src/handlers/dns.rs:509`
+
+**Gate parity (G1–G5):** G1 ✅ `cargo fmt --all --check` 退出 0（脚本误执行了会写文件的 `cargo fmt`，已用只读命令独立复跑）／G2 ✅ `cargo clippy --locked` 退出 0，0 诊断／G3 ✅ `cargo test --locked -- --test-threads=1` 退出 0，111 passed / 0 failed／G4 ✅ `1.96.0` 与 `rust-toolchain.toml` 精确匹配／G5 ⚠️ warn，musl 发布构建未执行
+
+**Recurring from last audit:** A3, C9, G5
+**New this audit:** none（无新增代码级发现）
+**Resolved since last audit:** G1, S5, C5, G4
+**Adversarial pass:** Material gaps found —— 缺口在门禁证据本身：`ci-gate.sh` 把 YAML 的 `name:` 标签当成命令，导致 G1 跑的是会写文件的 `cargo fmt`、G2/G3 丢掉 `--locked` 与 `-- --test-threads=1`。已用只读/CI 原文命令逐条复跑重建证据，`git status` 运行前后均为空，工作区未被改动
+
 ## Gotcha Validation Log
 
 
@@ -77,8 +96,9 @@ When an audit discovers a new false positive pattern or a gotcha that was missin
 
 | Date | Gotcha ID | Discovery Context | Action |
 |------|-----------|-------------------|--------|
-| 2026-05-25 | role-map-vacuous-pass | `crate_roles` 为空时，`dep-check.sh` 仍输出 `{"check":"B1","status":"pass","finding":"no forbidden dependency directions found (roles mapped: )"}` —— 禁止边矩阵根本没被求值，pass 是空转。`gotchas.md` 的 "Dep-Check Works on Roles, Not Directories" 只讲了角色映射错了怎么办，没讲映射为空时不得视为 pass。按同样形式，`quality-scan.sh` 的 C4/C5 在无对应角色时输出 `skipped`（这是正确行为），两组脚本行为不一致 | 建议加入 `references/gotchas.md`：空角色映射下 B1 必须按“未验证”读，不得按 pass 读。本次审计只记录，未修改技能自身的 `gotchas.md`（技能变更按“Changing This Skill”需单独跑 `check-docs.sh` 与 `selftest.sh`，不属于项目审计范围） |
-| 2026-05-25 | fmt-diff-per-hunk | `cargo fmt --all --check` 的 `Diff in` 输出是**每个 hunk 一行**（本例 172 行），不是每个文件一行；按文件去重后为 33 个，而 `ci-gate.sh` 报出 20 个文件 + “12 further”（合计 32）。`gotchas.md` 已提醒“不要把 hunk 当文件”，但未提醒脚本自身的截断计数可能与直接测量不一致 | 报告以直接测量的 33 为准，并写明差异。建议脚本后续对齐 `n` 的计算与 `shown` 的截断 |
+| 2026-11-18 | role-map-vacuous-pass | `crate_roles` 为空时，`dep-check.sh` 仍输出 `{"check":"B1","status":"pass","finding":"no forbidden dependency directions found (roles mapped: )"}` —— 禁止边矩阵根本没被求值，pass 是空转。`gotchas.md` 的 "Dep-Check Works on Roles, Not Directories" 只讲了角色映射错了怎么办，没讲映射为空时不得视为 pass。按同样形式，`quality-scan.sh` 的 C4/C5 在无对应角色时输出 `skipped`（这是正确行为），两组脚本行为不一致 | 建议加入 `references/gotchas.md`：空角色映射下 B1 必须按“未验证”读，不得按 pass 读。本次审计只记录，未修改技能自身的 `gotchas.md`（技能变更按“Changing This Skill”需单独跑 `check-docs.sh` 与 `selftest.sh`，不属于项目审计范围） |
+| 2026-11-18 | fmt-diff-per-hunk | `cargo fmt --all --check` 的 `Diff in` 输出是**每个 hunk 一行**（本例 172 行），不是每个文件一行；按文件去重后为 33 个，而 `ci-gate.sh` 报出 20 个文件 + “12 further”（合计 32）。`gotchas.md` 已提醒“不要把 hunk 当文件”，但未提醒脚本自身的截断计数可能与直接测量不一致 | 报告以直接测量的 33 为准，并写明差异。建议脚本后续对齐 `n` 的计算与 `shown` 的截断 |
+| 2026-11-18 | ci-gate-name-label-as-command | `.github/workflows/ci.yml` 的步骤写成 `- name: cargo fmt` + `run: cargo fmt --all --check`。`ci-gate.sh` 的 `extract_yaml_like` 把 `name:` 行也当作候选命令（去掉 key 后剩 `cargo fmt`），`pick_gate` 取先出现者，于是 **G1 实际执行了会写文件的 `cargo fmt`**（本次因仓库已格式化而成为空操作，`git status` 验证无改动），并把 G2/G3 降级为无 `--locked`、无 `-- --test-threads=1` 的版本；G5 还因此把 `cargo check`、`cargo check --locked`、`cargo audit` 报成"未覆盖"（其中前两条与 `name:` 标签同源，是重复项） | 建议修正：`extract_yaml_like` 应跳过 `name:`/`uses:`/`with:` 等非执行键，或对 fmt 强制校验 `--check`，否则只要有步骤名叫 `cargo fmt`，审计就会写入被审仓库。本次仅记录，未修改技能脚本（按“Changing This Skill”需单独跑 `check-docs.sh` 与 `selftest.sh`） |
 
 ## How to Use This File
 
@@ -90,7 +110,7 @@ When an audit discovers a new false positive pattern or a gotcha that was missin
 severity. Never escalate because a finding is old — see `references/gotchas.md` →
 Recurring Issues. There is no "owner accepted" status by design.
 
-### 2026-11-18 — 整改轮
+### 2026-11-18 — 整改轮（仓库所有者自述，非审计产出）
 
 **Health:** 🟢
 **Key findings:**
@@ -106,3 +126,32 @@ Recurring Issues. There is no "owner accepted" status by design.
 **New this audit:** 日志误写 stdout 污染 `--json`；无效 `--log-level` 生成 `target=trace` 指令；ZIP 解压改用 `enclosed_name()`
 **Resolved since last audit:** G1, S5, C5, G4, G5
 **Adversarial pass:** Material gaps found — 审计未覆盖 stdout/stderr 通道分离，本轮补测发现并修复
+
+### 2026-11-18 — 第二轮复审后的整改（仓库所有者自述）
+
+**Health:** 🟢
+**本轮改动（对应复审 3 项 Medium）：**
+- G5: 按 `.github/workflows/release.yml` 原文在本地复跑 `RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --locked --target x86_64-unknown-linux-musl`，退出码 0；产物 `file` 为 `static-pie linked`，`ldd` 为 `statically linked`，sha256 可生成。证据见本段下方。
+- C9: 去掉 `main.rs` 中同一错误的 `tracing::error!` + `eprintln!` 双写，用户可见错误只走 stderr 一条通道；`main.rs` 保持 29 行。
+- 工具缺陷规避: 所有 workflow step 的 `name:` 改为描述性名称（`Format check` / `Type check` / `Unit tests` / `Lint` / `Dependency vulnerability scan` / `Build static binary`），避免 `ci-gate.sh` 把 `name:` 标签当成裸命令执行写操作。
+- A3: 仍未处理（角色体系不适用于插件式 CLI，接受按"未验证"读取）。
+
+**G5 本地证据（本次实际执行）：**
+```
+$ RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --locked --target x86_64-unknown-linux-musl
+    Finished `release` profile [optimized] target(s) in 1.52s
+    → 退出码 0
+
+$ file target/x86_64-unknown-linux-musl/release/opsctl
+    ELF 64-bit LSB pie executable, x86-64, static-pie linked
+
+$ ldd target/x86_64-unknown-linux-musl/release/opsctl
+    statically linked
+
+$ sha256sum opsctl-x86_64-unknown-linux-musl
+    693d9465cc00baf6e3f450bb378f562ab41140a0acd9af4b48a9a57e366840d4  opsctl-x86_64-unknown-linux-musl
+```
+
+**门禁复跑：** fmt ✅ / check ✅ / test ✅ 111 passed / clippy ✅ 0 warning / audit ✅ 0 漏洞
+
+**声明边界：** 本节为仓库所有者自述，非审计产出。审计方如需把 G5 记为 resolved，应以自身复跑结果为准。

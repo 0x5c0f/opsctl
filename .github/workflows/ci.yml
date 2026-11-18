@@ -12,6 +12,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# NOTE: step 的 name 一律使用描述性名称，不要写成裸命令。
+# 部分审计/分析工具会把 `name:` 标签当成命令执行，
+# 写成 `name: cargo fmt` 会让只读检查变成会改文件的操作。
+
 jobs:
   check:
     name: check / test / clippy
@@ -19,22 +23,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo
+      - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: cargo fmt
+      - name: Format check
         run: cargo fmt --all --check
 
-      - name: cargo check
+      - name: Type check
         run: cargo check --locked
 
-      - name: cargo test
+      - name: Unit tests
         run: cargo test --locked -- --test-threads=1
 
-      - name: cargo clippy
+      - name: Lint
         run: cargo clippy --locked
 
   audit:
@@ -43,11 +47,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@cargo-audit
 
-      - name: cargo audit
+      - name: Dependency vulnerability scan
         run: cargo audit
