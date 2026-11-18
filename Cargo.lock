@@ -774,7 +774,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "opsctl"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "clap",
  "ctrlc",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "opsctl-cert"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "base64",
  "dirs",
@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "opsctl-core"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "dirs",
  "serde",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "opsctl-deploy"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "opsctl-core",
  "serde",
@@ -833,7 +833,7 @@ dependencies = [
 
 [[package]]
 name = "opsctl-dns"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "base64",
  "hex",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "opsctl-notify"
-version = "0.3.0-rc.2"
+version = "0.3.0-rc.3"
 dependencies = [
  "opsctl-core",
  "serde",
