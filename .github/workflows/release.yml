@@ -10,6 +10,9 @@ permissions:
 
 # NOTE: step 的 name 一律使用描述性名称，不要写成裸命令，
 # 否则部分审计工具会把 `name:` 标签当作命令执行。
+#
+# NOTE: 工具链由 rust-toolchain.toml 固定（含 musl target）。
+# 下面的 targets 输入是双保险：若将来移除该文件，action 仍会安装交叉目标。
 
 env:
   CARGO_TERM_COLOR: always
