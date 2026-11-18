@@ -1,5 +1,5 @@
+use opsctl_core::config::{DeployConfig, DeployProject, DeployType};
 use std::path::PathBuf;
-use opsctl_core::config::{DeployConfig, DeployType, DeployProject};
 
 /// 部署结果
 #[derive(Debug, Clone)]
@@ -28,19 +28,22 @@ pub struct DeployContext {
 }
 
 impl DeployContext {
-    pub fn from_project(
-        proj: &DeployProject,
-        base_dir: &std::path::Path,
-    ) -> Self {
-        let upload_dir = proj.upload_dir.as_ref()
+    pub fn from_project(proj: &DeployProject, base_dir: &std::path::Path) -> Self {
+        let upload_dir = proj
+            .upload_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("uploads"));
 
-        let ready_dir = proj.ready_dir.as_ref()
+        let ready_dir = proj
+            .ready_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("ready"));
 
-        let enabled_dir = proj.enabled_dir.as_ref()
+        let enabled_dir = proj
+            .enabled_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("enabled"));
 
@@ -68,15 +71,21 @@ impl DeployContext {
         config: &DeployConfig,
         base_dir: &std::path::Path,
     ) -> Self {
-        let upload_dir = config.upload_dir.as_ref()
+        let upload_dir = config
+            .upload_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("uploads"));
 
-        let ready_dir = config.ready_dir.as_ref()
+        let ready_dir = config
+            .ready_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("ready"));
 
-        let enabled_dir = config.enabled_dir.as_ref()
+        let enabled_dir = config
+            .enabled_dir
+            .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| base_dir.join("enabled"));
 

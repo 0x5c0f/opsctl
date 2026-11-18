@@ -1,5 +1,5 @@
+use sha2::{Digest, Sha256};
 use std::time::Duration;
-use sha2::{Sha256, Digest};
 
 /// 健康检查：HTTP GET + SHA256 指纹，带重试
 ///
@@ -31,17 +31,23 @@ pub fn health_check_with_retry(
             Err(e) => {
                 last_err = e.to_string();
                 if attempt < max_retries {
-                    tracing::warn!("健康检查失败 ({}/{}): {}，{}s 后重试",
-                        attempt + 1, max_retries, last_err, retry_interval);
+                    tracing::warn!(
+                        "健康检查失败 ({}/{}): {}，{}s 后重试",
+                        attempt + 1,
+                        max_retries,
+                        last_err,
+                        retry_interval
+                    );
                     std::thread::sleep(Duration::from_secs(retry_interval));
                 }
             }
         }
     }
 
-    Err(crate::DeployError::HealthCheck(
-        format!("健康检查失败 ({} 次重试后): {} — {}", max_retries, url, last_err)
-    ))
+    Err(crate::DeployError::HealthCheck(format!(
+        "健康检查失败 ({} 次重试后): {} — {}",
+        max_retries, url, last_err
+    )))
 }
 
 /// 单次健康检查
@@ -60,9 +66,10 @@ fn health_check_with_sha256(url: &str, timeout_secs: u64) -> Result<(), crate::D
 
             // 第一步：检查 HTTP 状态码
             if !(200..400).contains(&status_code) {
-                return Err(crate::DeployError::HealthCheck(
-                    format!("HTTP {} — {}", status_code, url),
-                ));
+                return Err(crate::DeployError::HealthCheck(format!(
+                    "HTTP {} — {}",
+                    status_code, url
+                )));
             }
 
             // 第二步：读取响应体并计算 SHA256
@@ -70,9 +77,10 @@ fn health_check_with_sha256(url: &str, timeout_secs: u64) -> Result<(), crate::D
             let bytes = match response_body.read_to_vec() {
                 Ok(b) => b,
                 Err(e) => {
-                    return Err(crate::DeployError::HealthCheck(
-                        format!("读取响应体失败 {}: {}", url, e),
-                    ));
+                    return Err(crate::DeployError::HealthCheck(format!(
+                        "读取响应体失败 {}: {}",
+                        url, e
+                    )));
                 }
             };
 
@@ -80,19 +88,21 @@ fn health_check_with_sha256(url: &str, timeout_secs: u64) -> Result<(), crate::D
             hasher.update(&bytes);
             let _fingerprint = format!("{:x}", hasher.finalize());
 
-            tracing::info!("健康检查通过: {} (HTTP {}, SHA256 指纹已计算)", url, status_code);
+            tracing::info!(
+                "健康检查通过: {} (HTTP {}, SHA256 指纹已计算)",
+                url,
+                status_code
+            );
             Ok(())
         }
-        Err(ureq::Error::StatusCode(code)) => {
-            Err(crate::DeployError::HealthCheck(
-                format!("HTTP {} — {}", code, url),
-            ))
-        }
-        Err(e) => {
-            Err(crate::DeployError::HealthCheck(
-                format!("请求失败 {}: {}", url, e),
-            ))
-        }
+        Err(ureq::Error::StatusCode(code)) => Err(crate::DeployError::HealthCheck(format!(
+            "HTTP {} — {}",
+            code, url
+        ))),
+        Err(e) => Err(crate::DeployError::HealthCheck(format!(
+            "请求失败 {}: {}",
+            url, e
+        ))),
     }
 }
 

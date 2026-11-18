@@ -2,8 +2,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 /// opsctl 全局配置（~/.opsctl/config.toml）
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct GlobalConfig {
     /// 日志级别 (error/warn/info/debug/trace)
     #[serde(default = "default_log_level")]
@@ -72,8 +71,7 @@ pub struct DnsConfig {
 }
 
 /// 通知模块配置
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct NotifyConfig {
     #[serde(default)]
     pub webhooks: Vec<WebhookEntry>,
@@ -118,8 +116,7 @@ pub struct CertCheckConfig {
 }
 
 /// 部署模块默认配置（全局配置中的默认值）
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct DeployDefaultsConfig {
     #[serde(default)]
     pub base_dir: Option<String>,
@@ -134,8 +131,7 @@ pub struct HealthCheckDefaults {
 }
 
 /// 部署模块集中式配置（全局配置顶层 [deploy] 段）
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct DeployConfigRoot {
     #[serde(default)]
     pub projects: Vec<DeployProject>,
@@ -237,7 +233,6 @@ fn default_log_level() -> String {
     "info".into()
 }
 
-
 impl Default for CertConfig {
     fn default() -> Self {
         Self {
@@ -262,7 +257,6 @@ impl Default for CertCheckConfig {
         }
     }
 }
-
 
 impl Default for HealthCheckDefaults {
     fn default() -> Self {
@@ -324,7 +318,10 @@ mod tests {
         assert!(matches!(config.deploy.r#type, DeployType::Static));
         assert_eq!(config.deploy.command, "systemctl restart nginx");
         assert_eq!(config.deploy.keep_versions, 10);
-        assert_eq!(config.deploy.health_check_url, Some("https://example.com/health".into()));
+        assert_eq!(
+            config.deploy.health_check_url,
+            Some("https://example.com/health".into())
+        );
     }
 
     #[test]
@@ -342,17 +339,21 @@ mod tests {
 
     #[test]
     fn test_deploy_type_deserialize() {
-        let cfg: ProjectDeployConfig = toml::from_str(r#"
+        let cfg: ProjectDeployConfig = toml::from_str(
+            r#"
             [deploy]
             type = "static"
             command = "test"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(matches!(cfg.deploy.r#type, DeployType::Static));
     }
 
     #[test]
     fn test_dns_config_from_toml() {
-        let config: GlobalConfig = toml::from_str(r#"
+        let config: GlobalConfig = toml::from_str(
+            r#"
             [dns]
             notify = "all"
 
@@ -366,7 +367,9 @@ mod tests {
             name = "cf-prod"
             provider = "cloudflare"
             api_token = "token"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(config.dns.notify, DnsNotifyLevel::All);
         assert_eq!(config.dns.accounts.len(), 2);
         assert_eq!(config.dns.accounts[0].provider, DnsProviderKind::Aliyun);
@@ -397,10 +400,12 @@ impl GlobalConfig {
 
     /// 从指定路径加载全局配置
     pub fn from_file(path: &std::path::Path) -> Result<Self, crate::OpsctlError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| crate::OpsctlError::Config(format!("读取配置文件失败 {}: {e}", path.display())))?;
-        let config: GlobalConfig = toml::from_str(&content)
-            .map_err(|e| crate::OpsctlError::Config(format!("解析配置文件失败 {}: {e}", path.display())))?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            crate::OpsctlError::Config(format!("读取配置文件失败 {}: {e}", path.display()))
+        })?;
+        let config: GlobalConfig = toml::from_str(&content).map_err(|e| {
+            crate::OpsctlError::Config(format!("解析配置文件失败 {}: {e}", path.display()))
+        })?;
         Ok(config)
     }
 
@@ -412,16 +417,19 @@ impl GlobalConfig {
     }
 
     /// 加载项目级部署配置
-    pub fn load_project_deploy_config(project_dir: &std::path::Path) -> Result<Option<ProjectDeployConfig>, crate::OpsctlError> {
+    pub fn load_project_deploy_config(
+        project_dir: &std::path::Path,
+    ) -> Result<Option<ProjectDeployConfig>, crate::OpsctlError> {
         let path = project_dir.join(".opsctl.toml");
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| crate::OpsctlError::Config(format!("读取项目配置失败 {}: {e}", path.display())))?;
-        let config: ProjectDeployConfig = toml::from_str(&content)
-            .map_err(|e| crate::OpsctlError::Config(format!("解析项目配置失败 {}: {e}", path.display())))?;
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            crate::OpsctlError::Config(format!("读取项目配置失败 {}: {e}", path.display()))
+        })?;
+        let config: ProjectDeployConfig = toml::from_str(&content).map_err(|e| {
+            crate::OpsctlError::Config(format!("解析项目配置失败 {}: {e}", path.display()))
+        })?;
         Ok(Some(config))
     }
 }
-

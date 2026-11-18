@@ -286,16 +286,25 @@ mod tests {
     #[test]
     fn global_short_flags_parse() {
         let cli = Cli::try_parse_from([
-            "opsctl", "-L", "debug", "-j", "dns", "account", "verify", "-a", "aliyun-prod",
+            "opsctl",
+            "-L",
+            "debug",
+            "-j",
+            "dns",
+            "account",
+            "verify",
+            "-a",
+            "aliyun-prod",
         ])
         .unwrap();
         assert_eq!(cli.log_level.as_deref(), Some("debug"));
         assert!(cli.json);
         match cli.command {
             Commands::Dns {
-                sub: DnsSubcommands::Account {
-                    sub: DnsAccountSubcommands::Verify { account },
-                },
+                sub:
+                    DnsSubcommands::Account {
+                        sub: DnsAccountSubcommands::Verify { account },
+                    },
             } => assert_eq!(account.as_deref(), Some("aliyun-prod")),
             other => panic!("unexpected command: {other:?}"),
         }
@@ -304,8 +313,7 @@ mod tests {
     #[test]
     fn global_flags_after_subcommand_are_rejected() {
         assert!(
-            Cli::try_parse_from(["opsctl", "dns", "-c", "/tmp/x.toml", "account", "list"])
-                .is_err()
+            Cli::try_parse_from(["opsctl", "dns", "-c", "/tmp/x.toml", "account", "list"]).is_err()
         );
         assert!(Cli::try_parse_from(["opsctl", "deploy", "-j", "run"]).is_err());
         assert!(Cli::try_parse_from(["opsctl", "cert", "-L", "debug", "check"]).is_err());
@@ -314,28 +322,51 @@ mod tests {
     #[test]
     fn dns_record_create_short_flags_parse() {
         let cli = Cli::try_parse_from([
-            "opsctl", "-j", "dns", "record", "create", "-d", "example.com", "-H", "www", "-t",
-            "A", "-v", "1.2.3.4", "-T", "300", "-l", "default", "-p", "true", "-r", "web", "-a",
-            "cf-prod", "-n",
+            "opsctl",
+            "-j",
+            "dns",
+            "record",
+            "create",
+            "-d",
+            "example.com",
+            "-H",
+            "www",
+            "-t",
+            "A",
+            "-v",
+            "1.2.3.4",
+            "-T",
+            "300",
+            "-l",
+            "default",
+            "-p",
+            "true",
+            "-r",
+            "web",
+            "-a",
+            "cf-prod",
+            "-n",
         ])
         .unwrap();
         assert!(cli.json);
         match cli.command {
             Commands::Dns {
-                sub: DnsSubcommands::Record {
-                    sub: DnsRecordSubcommands::Create {
-                        domain,
-                        host,
-                        r#type,
-                        value,
-                        ttl,
-                        line,
-                        proxied,
-                        remark,
-                        account,
-                        dry_run,
+                sub:
+                    DnsSubcommands::Record {
+                        sub:
+                            DnsRecordSubcommands::Create {
+                                domain,
+                                host,
+                                r#type,
+                                value,
+                                ttl,
+                                line,
+                                proxied,
+                                remark,
+                                account,
+                                dry_run,
+                            },
                     },
-                },
             } => {
                 assert_eq!(domain, "example.com");
                 assert_eq!(host, "www");
@@ -437,7 +468,10 @@ mod tests {
             "只操作指定账户",
             "只预览",
         ] {
-            assert!(create_help.contains(phrase), "missing create help: {phrase}");
+            assert!(
+                create_help.contains(phrase),
+                "missing create help: {phrase}"
+            );
         }
 
         let delete_help = record
@@ -469,5 +503,42 @@ mod tests {
             .render_help()
             .to_string();
         assert!(check_help.contains("过期告警阈值天数"));
+    }
+}
+
+/// 子命令分发：把 CLI 解析结果映射到对应 handler。
+pub fn dispatch(
+    global_cfg: &opsctl_core::GlobalConfig,
+    cli: &Cli,
+) -> crate::handlers::HandlerResult {
+    match &cli.command {
+        Commands::Deploy { sub } => match sub {
+            DeploySubcommands::Run { project } => {
+                crate::handlers::deploy::handle_run(global_cfg, project.clone())
+            }
+            DeploySubcommands::Daemon { interval } => {
+                crate::handlers::deploy::handle_daemon(global_cfg, *interval)
+            }
+            DeploySubcommands::History { project, limit } => {
+                crate::handlers::deploy::handle_history(global_cfg, project.clone(), *limit)
+            }
+            DeploySubcommands::Rollback { version_id } => {
+                crate::handlers::deploy::handle_rollback(global_cfg, version_id)
+            }
+            DeploySubcommands::Init { project } => {
+                crate::handlers::deploy::handle_deploy_init(global_cfg, project.clone())
+            }
+        },
+        Commands::Cert { sub } => match sub {
+            CertSubcommands::Update { cert_id } => {
+                crate::handlers::cert::handle_update(global_cfg, *cert_id)
+            }
+            CertSubcommands::List => crate::handlers::cert::handle_list(global_cfg),
+            CertSubcommands::Check { warn_days } => {
+                crate::handlers::cert::handle_check(global_cfg, *warn_days)
+            }
+        },
+        Commands::Dns { sub } => crate::handlers::dns::handle_dns(global_cfg, sub, cli.json),
+        Commands::Init { project, force } => crate::handlers::init::handle_init(*project, *force),
     }
 }

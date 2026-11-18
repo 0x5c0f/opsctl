@@ -8,12 +8,18 @@ pub use certificate::CertInfo;
 pub use error::CertError;
 pub use formats::CertParts;
 
-use md5::{Md5, Digest};
+use md5::{Digest, Md5};
 use std::path::{Path, PathBuf};
 
 /// 执行一次证书更新
-pub fn update_certs(config: &opsctl_core::config::CertConfig) -> Result<Vec<UpdateResult>, CertError> {
-    let client = CertdClient::new(&config.certd_base_url, &config.certd_key_id, &config.certd_key_secret);
+pub fn update_certs(
+    config: &opsctl_core::config::CertConfig,
+) -> Result<Vec<UpdateResult>, CertError> {
+    let client = CertdClient::new(
+        &config.certd_base_url,
+        &config.certd_key_id,
+        &config.certd_key_secret,
+    );
     let cert_dir = resolve_cert_dir(config);
 
     let mut results = Vec::new();
@@ -48,17 +54,18 @@ pub fn update_certs(config: &opsctl_core::config::CertConfig) -> Result<Vec<Upda
                 };
 
                 if let Some(ref local) = local_md5
-                    && local == &new_md5 {
-                        tracing::info!("证书未变更，跳过: {} (cert_id={})", domain, cert_id);
-                        results.push(UpdateResult {
-                            domain: domain.clone(),
-                            cert_id: Some(*cert_id),
-                            success: true,
-                            changed: false,
-                            message: "证书未变更，已跳过".into(),
-                        });
-                        continue;
-                    }
+                    && local == &new_md5
+                {
+                    tracing::info!("证书未变更，跳过: {} (cert_id={})", domain, cert_id);
+                    results.push(UpdateResult {
+                        domain: domain.clone(),
+                        cert_id: Some(*cert_id),
+                        success: true,
+                        changed: false,
+                        message: "证书未变更，已跳过".into(),
+                    });
+                    continue;
+                }
 
                 // 证书有变更，写入文件
                 std::fs::create_dir_all(&domain_dir)?;
@@ -89,7 +96,12 @@ pub fn update_certs(config: &opsctl_core::config::CertConfig) -> Result<Vec<Upda
                 )
                 .unwrap_or_else(|e| tracing::warn!("保存元数据失败: {e}"));
 
-                tracing::info!("证书已更新: {} (cert_id={}, md5={})", domain, cert_id, &new_md5[..8]);
+                tracing::info!(
+                    "证书已更新: {} (cert_id={}, md5={})",
+                    domain,
+                    cert_id,
+                    &new_md5[..8]
+                );
                 results.push(UpdateResult {
                     domain: domain.clone(),
                     cert_id: Some(*cert_id),

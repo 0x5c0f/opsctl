@@ -257,7 +257,10 @@ impl DnspodProvider {
 
 impl DnsProvider for DnspodProvider {
     fn verify(&self) -> Result<(), DnsError> {
-        self.call("DescribeDomainList", serde_json::json!({"Limit":1,"Offset":0}))?;
+        self.call(
+            "DescribeDomainList",
+            serde_json::json!({"Limit":1,"Offset":0}),
+        )?;
         Ok(())
     }
 
@@ -336,7 +339,7 @@ impl DnsProvider for DnspodProvider {
                 return Err(DnsError::Api {
                     code: "BadResponse".into(),
                     message: "腾讯云未返回 RecordId".into(),
-                })
+                });
             }
         };
         Ok(ProviderRecord {
@@ -428,9 +431,9 @@ impl DnsProvider for DnspodProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DnsError;
     use crate::providers::test_server::{MockResponse, MockServer};
     use crate::types::{ProviderZone, RecordInput, RecordUpdate};
-    use crate::DnsError;
     use serde_json::Value;
 
     #[test]
@@ -507,9 +510,7 @@ mod tests {
 
     #[test]
     fn create_record_sends_default_line_and_remark() {
-        let server = MockServer::new(vec![MockResponse::ok(
-            r#"{"Response":{"RecordId":456}}"#,
-        )]);
+        let server = MockServer::new(vec![MockResponse::ok(r#"{"Response":{"RecordId":456}}"#)]);
         let provider = DnspodProvider::new("id", "key").with_endpoint(server.base_url());
         let zone = ProviderZone {
             name: "example.com".into(),

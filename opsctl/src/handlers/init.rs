@@ -1,5 +1,9 @@
 use std::path::Path;
 
+use opsctl_core::OpsctlError;
+
+use super::HandlerResult;
+
 /// 全局配置模板 (~/.opsctl/config.toml)
 const GLOBAL_CONFIG_TEMPLATE: &str = r#"# opsctl 全局配置
 # 更多选项见 README.md
@@ -107,58 +111,48 @@ keep_versions = 5
 # enabled_dir = "/data/myapp/enabled"
 "#;
 
-pub fn handle_init(project: bool, force: bool) {
+pub fn handle_init(project: bool, force: bool) -> HandlerResult {
     if project {
-        init_project_config(force);
+        init_project_config(force)
     } else {
-        init_global_config(force);
+        init_global_config(force)
     }
 }
 
-fn init_global_config(force: bool) {
-    let home = match std::env::var("HOME") {
-        Ok(h) => h,
-        Err(_) => {
-            eprintln!("错误: 无法获取 home 目录 (未设置 HOME 环境变量)");
-            std::process::exit(1);
-        }
-    };
+fn init_global_config(force: bool) -> HandlerResult {
+    let home = std::env::var("HOME")
+        .map_err(|_| OpsctlError::Other("无法获取 home 目录 (未设置 HOME 环境变量)".into()))?;
     let config_dir = Path::new(&home).join(".opsctl");
     let config_path = config_dir.join("config.toml");
 
     if config_path.exists() && !force {
-        eprintln!("配置文件已存在: {:?}", config_path);
-        eprintln!("使用 --force 强制覆盖");
-        std::process::exit(1);
+        return Err(OpsctlError::Other(format!(
+            "配置文件已存在: {} (使用 --force 强制覆盖)",
+            config_path.display()
+        )));
     }
 
-    std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| {
-        eprintln!("错误: 创建配置目录失败: {e}");
-        std::process::exit(1);
-    });
-
-    std::fs::write(&config_path, GLOBAL_CONFIG_TEMPLATE).unwrap_or_else(|e| {
-        eprintln!("错误: 写入配置文件失败: {e}");
-        std::process::exit(1);
-    });
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| OpsctlError::Other(format!("创建配置目录失败: {e}")))?;
+    std::fs::write(&config_path, GLOBAL_CONFIG_TEMPLATE)
+        .map_err(|e| OpsctlError::Other(format!("写入配置文件失败: {e}")))?;
 
     println!("✅ 全局配置已生成: {:?}", config_path);
     println!("   编辑此文件以配置通知、证书源、部署默认值和 DNS 解析管理。");
+    Ok(())
 }
 
-fn init_project_config(force: bool) {
+fn init_project_config(force: bool) -> HandlerResult {
     let config_path = Path::new(".opsctl.toml");
 
     if config_path.exists() && !force {
-        eprintln!("配置文件已存在: {:?}", config_path);
-        eprintln!("使用 --force 强制覆盖");
-        std::process::exit(1);
+        return Err(OpsctlError::Other(
+            "配置文件 .opsctl.toml 已存在 (使用 --force 强制覆盖)".into(),
+        ));
     }
 
-    std::fs::write(config_path, PROJECT_CONFIG_TEMPLATE).unwrap_or_else(|e| {
-        eprintln!("错误: 写入配置文件失败: {e}");
-        std::process::exit(1);
-    });
+    std::fs::write(config_path, PROJECT_CONFIG_TEMPLATE)
+        .map_err(|e| OpsctlError::Other(format!("写入配置文件失败: {e}")))?;
 
     let abs = std::env::current_dir()
         .unwrap_or_else(|_| Path::new(".").to_path_buf())
@@ -166,6 +160,7 @@ fn init_project_config(force: bool) {
 
     println!("✅ 项目配置已生成: {:?}", abs);
     println!("   编辑此文件，填写 deploy.type 和 deploy.command 后即可使用 opsctl deploy run。");
+    Ok(())
 }
 
 #[cfg(test)]

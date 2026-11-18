@@ -1,6 +1,6 @@
-use md5::{Md5, Digest};
-use std::time::{SystemTime, UNIX_EPOCH};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use md5::{Digest, Md5};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// certd API 客户端
 ///
@@ -40,7 +40,8 @@ impl CertdClient {
             .build()
             .into();
 
-        let response = agent.post(&url)
+        let response = agent
+            .post(&url)
             .header("x-certd-token", &token)
             .send_json(&body)
             .map_err(|e| crate::CertError::Api(format!("API 请求失败: {e}")))?;
@@ -48,13 +49,18 @@ impl CertdClient {
         let status = response.status().as_u16();
         // 读取响应体（无论状态码，都需要解析错误消息）
         let mut resp_body = response.into_body();
-        let resp_bytes = resp_body.read_to_vec()
+        let resp_bytes = resp_body
+            .read_to_vec()
             .map_err(|e| crate::CertError::Api(format!("读取响应失败: {e}")))?;
         let resp_text = String::from_utf8(resp_bytes)
             .map_err(|e| crate::CertError::Api(format!("响应编码错误: {e}")))?;
 
         if status != 200 {
-            return Err(crate::CertError::Api(format!("API 返回 HTTP {}: {}", status, &resp_text[..resp_text.len().min(300)])));
+            return Err(crate::CertError::Api(format!(
+                "API 返回 HTTP {}: {}",
+                status,
+                &resp_text[..resp_text.len().min(300)]
+            )));
         }
 
         let resp_body: serde_json::Value = serde_json::from_str(&resp_text)
@@ -63,21 +69,28 @@ impl CertdClient {
         // certd API 响应: code=0 成功，其他为错误
         let code = resp_body.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
         if code != 0 {
-            let msg = resp_body.get("message")
+            let msg = resp_body
+                .get("message")
                 .and_then(|m| m.as_str())
                 .or_else(|| resp_body.get("msg").and_then(|m| m.as_str()))
                 .unwrap_or("unknown error");
-            return Err(crate::CertError::Api(format!("API 错误 (code={}): {}", code, msg)));
+            return Err(crate::CertError::Api(format!(
+                "API 错误 (code={}): {}",
+                code, msg
+            )));
         }
 
-        let data = resp_body.get("data")
+        let data = resp_body
+            .get("data")
             .ok_or_else(|| crate::CertError::Api("响应缺少 data 字段".into()))?;
 
-        let cert_pem = data.get("crt")
+        let cert_pem = data
+            .get("crt")
             .and_then(|c| c.as_str())
             .ok_or_else(|| crate::CertError::Api("响应缺少 crt 字段".into()))?;
 
-        let key_pem = data.get("key")
+        let key_pem = data
+            .get("key")
             .and_then(|k| k.as_str())
             .ok_or_else(|| crate::CertError::Api("响应缺少 key 字段".into()))?;
 
@@ -120,15 +133,15 @@ impl CertdClient {
         })
     }
 
-pub(crate) fn build_token_content(key_id: &str, timestamp: u64) -> String {
-    let escaped_key_id = serde_json::to_string(key_id).unwrap_or_else(|_| "\"\"".to_string());
-    format!(
-        "{{\"keyId\":{escaped_key_id},\"t\":{timestamp},\"encrypt\":false,\"signType\":\"md5\"}}"
-    )
-}
+    pub(crate) fn build_token_content(key_id: &str, timestamp: u64) -> String {
+        let escaped_key_id = serde_json::to_string(key_id).unwrap_or_else(|_| "\"\"".to_string());
+        format!(
+            "{{\"keyId\":{escaped_key_id},\"t\":{timestamp},\"encrypt\":false,\"signType\":\"md5\"}}"
+        )
+    }
 
-/// 生成 x-certd-token
-fn generate_token(&self) -> Result<String, crate::CertError> {
+    /// 生成 x-certd-token
+    fn generate_token(&self) -> Result<String, crate::CertError> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| crate::CertError::Api(format!("时间错误: {e}")))?

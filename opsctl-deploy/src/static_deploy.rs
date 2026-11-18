@@ -6,9 +6,10 @@ use std::path::Path;
 /// 流程：删除旧软链接 → 创建新软链接
 pub fn static_deploy(enabled_dir: &Path, ready_dir: &Path) -> Result<(), crate::DeployError> {
     if !ready_dir.exists() {
-        return Err(crate::DeployError::DeployFailed(
-            format!("目标版本目录不存在: {:?}", ready_dir),
-        ));
+        return Err(crate::DeployError::DeployFailed(format!(
+            "目标版本目录不存在: {:?}",
+            ready_dir
+        )));
     }
 
     // 确保 enabled 的父目录存在

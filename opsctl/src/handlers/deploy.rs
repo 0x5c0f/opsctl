@@ -1,38 +1,56 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use opsctl_core::GlobalConfig;
+use opsctl_core::OpsctlError;
 use opsctl_core::config::DeployType;
 use opsctl_deploy::DeployContext;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use super::HandlerResult;
 
 /// 处理 `opsctl deploy run`
-pub fn handle_run(global_cfg: &GlobalConfig, project: Option<String>) {
+pub fn handle_run(global_cfg: &GlobalConfig, project: Option<String>) -> HandlerResult {
     if let Some(ref proj_name) = project {
         let Some(proj) = crate::helpers::find_project(global_cfg, proj_name) else {
-            eprintln!("错误: 未找到项目 '{}'", proj_name);
-            std::process::exit(1);
+            return Err(OpsctlError::Other(format!("未找到项目 '{proj_name}'")));
         };
         let base_dir = std::path::Path::new(
-            global_cfg.deploy.defaults.base_dir.as_deref().unwrap_or("/data/autoDeploy")
+            global_cfg
+                .deploy
+                .defaults
+                .base_dir
+                .as_deref()
+                .unwrap_or("/data/autoDeploy"),
         );
         let ctx = DeployContext::from_project(proj, base_dir);
-        deploy_one(&ctx, global_cfg);
+        deploy_one(&ctx, global_cfg)
     } else {
         let ctxs = crate::helpers::load_deploy_projects(global_cfg);
         if ctxs.is_empty() {
-            eprintln!("警告: 未配置任何部署项目 (请在 ~/.opsctl/config.toml 中设置 [[deploy.projects]])");
-            return;
+            eprintln!(
+                "警告: 未配置任何部署项目 (请在 ~/.opsctl/config.toml 中设置 [[deploy.projects]])"
+            );
+            return Ok(());
         }
+        let mut first_error = None;
         for ctx in &ctxs {
-            deploy_one(ctx, global_cfg);
+            if let Err(e) = deploy_one(ctx, global_cfg)
+                && first_error.is_none()
+            {
+                first_error = Some(e);
+            }
+        }
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
         }
     }
 }
 
-fn deploy_one(ctx: &DeployContext, global_cfg: &GlobalConfig) {
+fn deploy_one(ctx: &DeployContext, global_cfg: &GlobalConfig) -> HandlerResult {
     // 检查持久化锁
     if ctx.lock_file.exists() {
         println!("⏭️  [{}] 锁文件存在，跳过", ctx.project_name);
-        return;
+        return Ok(());
     }
 
     // Docker 模式：跳过 ZIP 扫描，直接重启
@@ -42,20 +60,25 @@ fn deploy_one(ctx: &DeployContext, global_cfg: &GlobalConfig) {
         version_id = "docker".into();
     } else {
         // Static / Dynamic：扫描上传目录
-        let zip_path = match opsctl_deploy::scanner::find_first_upload(&ctx.upload_dir, &ctx.project_name) {
-            Ok(Some(p)) => p,
-            Ok(None) => {
-                println!("⏭️  [{}] 无待部署 ZIP，已重建锁", ctx.project_name);
-                let _ = std::fs::write(&ctx.lock_file, format!("{}", std::process::id()));
-                return;
-            }
-            Err(e) => {
-                eprintln!("❌ [{}] 扫描失败: {}，已重建锁", ctx.project_name, e);
-                let _ = std::fs::write(&ctx.lock_file, format!("{}", std::process::id()));
-                return;
-            }
-        };
-        version_id = zip_path.file_stem()
+        let zip_path =
+            match opsctl_deploy::scanner::find_first_upload(&ctx.upload_dir, &ctx.project_name) {
+                Ok(Some(p)) => p,
+                Ok(None) => {
+                    println!("⏭️  [{}] 无待部署 ZIP，已重建锁", ctx.project_name);
+                    let _ = std::fs::write(&ctx.lock_file, format!("{}", std::process::id()));
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("❌ [{}] 扫描失败: {}，已重建锁", ctx.project_name, e);
+                    let _ = std::fs::write(&ctx.lock_file, format!("{}", std::process::id()));
+                    return Err(OpsctlError::Other(format!(
+                        "[{}] 扫描失败: {e}",
+                        ctx.project_name
+                    )));
+                }
+            };
+        version_id = zip_path
+            .file_stem()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -72,39 +95,45 @@ fn deploy_one(ctx: &DeployContext, global_cfg: &GlobalConfig) {
         tracing::warn!("已删除损坏的 ZIP: {:?}", p);
     }
     crate::helpers::send_deploy_notification(&result, global_cfg);
-    crate::helpers::print_deploy_result(&result);
+    crate::helpers::print_deploy_result(&result)
 }
 
 /// 处理 `opsctl deploy daemon`
-pub fn handle_daemon(global_cfg: &GlobalConfig, interval: u64) {
+pub fn handle_daemon(global_cfg: &GlobalConfig, interval: u64) -> HandlerResult {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
-    match ctrlc::set_handler(move || {
+    if let Err(e) = ctrlc::set_handler(move || {
         tracing::info!("收到退出信号，正在停止守护模式...");
         r.store(false, Ordering::Relaxed);
     }) {
-        Ok(()) => {}
-        Err(e) => {
-            eprintln!("错误: 无法设置信号处理器: {e}");
-            std::process::exit(1);
-        }
+        return Err(OpsctlError::Other(format!("无法设置信号处理器: {e}")));
     }
 
     opsctl_deploy::daemon::run_daemon(&global_cfg.deploy, interval, running);
+    Ok(())
 }
 
 /// 处理 `opsctl deploy history`
-pub fn handle_history(global_cfg: &GlobalConfig, project: Option<String>, limit: usize) {
+pub fn handle_history(
+    global_cfg: &GlobalConfig,
+    project: Option<String>,
+    limit: usize,
+) -> HandlerResult {
     let basedir = std::path::Path::new(
-        global_cfg.deploy.defaults.base_dir.as_deref().unwrap_or("/data/autoDeploy")
+        global_cfg
+            .deploy
+            .defaults
+            .base_dir
+            .as_deref()
+            .unwrap_or("/data/autoDeploy"),
     );
 
     if let Some(ref proj) = project {
-        print_history(basedir, proj, limit);
+        print_history(basedir, proj, limit)?;
     } else {
         let mut count = 0usize;
         for proj in &global_cfg.deploy.projects {
-            if print_history(basedir, &proj.name, limit) {
+            if print_history(basedir, &proj.name, limit)? {
                 count += 1;
                 println!();
             }
@@ -113,25 +142,25 @@ pub fn handle_history(global_cfg: &GlobalConfig, project: Option<String>, limit:
             println!("暂无部署历史记录");
         }
     }
+    Ok(())
 }
 
-fn print_history(basedir: &std::path::Path, project: &str, limit: usize) -> bool {
-    let records = match opsctl_deploy::get_project_history(basedir, project, limit) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("错误: {e}");
-            return false;
-        }
-    };
+fn print_history(
+    basedir: &std::path::Path,
+    project: &str,
+    limit: usize,
+) -> Result<bool, OpsctlError> {
+    let records = opsctl_deploy::get_project_history(basedir, project, limit)
+        .map_err(|e| OpsctlError::Other(e.to_string()))?;
     if records.is_empty() {
-        return false;
+        return Ok(false);
     }
     println!("{:<25} {:<21} {:<14} 项目", "版本ID", "时间", "状态");
     println!("{}", "-".repeat(75));
     for line in opsctl_deploy::format_history(&records) {
-        println!("{}", line);
+        println!("{line}");
     }
-    true
+    Ok(true)
 }
 
 pub(crate) fn rollback_support_error(deploy_type: DeployType) -> Option<&'static str> {
@@ -143,13 +172,19 @@ pub(crate) fn rollback_support_error(deploy_type: DeployType) -> Option<&'static
 }
 
 /// 处理 `opsctl deploy rollback`
-pub fn handle_rollback(global_cfg: &GlobalConfig, version_id: &str) {
+pub fn handle_rollback(global_cfg: &GlobalConfig, version_id: &str) -> HandlerResult {
     let basedir = std::path::Path::new(
-        global_cfg.deploy.defaults.base_dir.as_deref().unwrap_or("/data/autoDeploy")
+        global_cfg
+            .deploy
+            .defaults
+            .base_dir
+            .as_deref()
+            .unwrap_or("/data/autoDeploy"),
     );
     // 从历史记录中获取项目名以匹配配置
     let proj_name = opsctl_deploy::load_history(basedir)
-        .ok().as_ref()
+        .ok()
+        .as_ref()
         .and_then(|r| r.iter().find(|v| v.id == version_id))
         .map(|v| v.project.clone());
 
@@ -159,53 +194,51 @@ pub fn handle_rollback(global_cfg: &GlobalConfig, version_id: &str) {
     if let Some(proj) = project
         && let Some(reason) = rollback_support_error(proj.deploy_type.clone())
     {
-        eprintln!("❌ 回滚失败: {reason}");
-        std::process::exit(1);
+        return Err(OpsctlError::Other(format!("回滚失败: {reason}")));
     }
 
-    match opsctl_deploy::rollback_to(basedir, version_id) {
-        Ok(_) => {
-            println!("✅ 回滚成功到版本: {}", version_id);
-            // 执行重启 + 健康检查
-            if let Some(proj) = project {
-                let ctx = DeployContext::from_project(proj, basedir);
-                if !ctx.command.is_empty() {
-                    tracing::info!("回滚后执行重启: {}", ctx.command);
-                    if let Err(e) = opsctl_deploy::safety::execute_command(&ctx.command) {
-                        tracing::error!("回滚后重启失败: {}", e);
-                    }
-                }
-                if let Some(ref url) = ctx.health_check_url {
-                    let _ = opsctl_deploy::health_check::health_check_with_retry(url, 30, 3, 3, 2);
-                }
+    opsctl_deploy::rollback_to(basedir, version_id)
+        .map_err(|e| OpsctlError::Other(format!("回滚失败: {e}")))?;
+
+    println!("✅ 回滚成功到版本: {version_id}");
+    // 执行重启 + 健康检查
+    if let Some(proj) = project {
+        let ctx = DeployContext::from_project(proj, basedir);
+        if !ctx.command.is_empty() {
+            tracing::info!("回滚后执行重启: {}", ctx.command);
+            if let Err(e) = opsctl_deploy::safety::execute_command(&ctx.command) {
+                tracing::error!("回滚后重启失败: {}", e);
             }
         }
-        Err(e) => {
-            eprintln!("❌ 回滚失败: {e}");
-            std::process::exit(1);
+        if let Some(ref url) = ctx.health_check_url {
+            let _ = opsctl_deploy::health_check::health_check_with_retry(url, 30, 3, 3, 2);
         }
     }
+    Ok(())
 }
 
 /// 处理 `opsctl deploy init` — 初始化所有项目的锁文件
-pub fn handle_deploy_init(global_cfg: &GlobalConfig, project: Option<String>) {
+pub fn handle_deploy_init(global_cfg: &GlobalConfig, project: Option<String>) -> HandlerResult {
     let base_dir = std::path::Path::new(
-        global_cfg.deploy.defaults.base_dir.as_deref().unwrap_or("/data/autoDeploy")
+        global_cfg
+            .deploy
+            .defaults
+            .base_dir
+            .as_deref()
+            .unwrap_or("/data/autoDeploy"),
     );
     let uploads = base_dir.join("uploads");
-    std::fs::create_dir_all(&uploads).unwrap_or_else(|e| {
-        eprintln!("错误: 创建 uploads 目录失败: {e}");
-        std::process::exit(1);
-    });
+    std::fs::create_dir_all(&uploads)
+        .map_err(|e| OpsctlError::Other(format!("创建 uploads 目录失败: {e}")))?;
 
     if let Some(ref proj_name) = project {
-        let lock_file = uploads.join(format!(".{}.lock", proj_name));
-        create_lock(&lock_file, proj_name);
+        let lock_file = uploads.join(format!(".{proj_name}.lock"));
+        create_lock(&lock_file, proj_name)?;
     } else {
         let mut count = 0usize;
         for proj in &global_cfg.deploy.projects {
             let lock_file = uploads.join(format!(".{}.lock", proj.name));
-            if create_lock(&lock_file, &proj.name) {
+            if create_lock(&lock_file, &proj.name)? {
                 count += 1;
             }
         }
@@ -213,29 +246,36 @@ pub fn handle_deploy_init(global_cfg: &GlobalConfig, project: Option<String>) {
             println!("所有项目锁文件均已存在，无需初始化");
         }
     }
+    Ok(())
 }
 
-fn create_lock(lock_file: &std::path::Path, proj_name: &str) -> bool {
+fn create_lock(lock_file: &std::path::Path, proj_name: &str) -> Result<bool, OpsctlError> {
     if lock_file.exists() {
-        println!("⏭️  [{}] 已存在", proj_name);
-        false
+        println!("⏭️  [{proj_name}] 已存在");
+        Ok(false)
     } else {
         std::fs::write(lock_file, format!("{}", std::process::id()))
-            .unwrap_or_else(|e| { eprintln!("❌ [{}] 创建失败: {e}", proj_name); std::process::exit(1); });
-        println!("✅ [{}] 锁文件已创建", proj_name);
-        true
+            .map_err(|e| OpsctlError::Other(format!("[{proj_name}] 创建失败: {e}")))?;
+        println!("✅ [{proj_name}] 锁文件已创建");
+        Ok(true)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use opsctl_core::config::DeployType;
 
     #[test]
     fn rollback_is_only_supported_for_static() {
         assert!(rollback_support_error(DeployType::Static).is_none());
         assert!(rollback_support_error(DeployType::Dynamic).is_some());
         assert!(rollback_support_error(DeployType::Docker).is_some());
+    }
+
+    #[test]
+    fn missing_project_returns_error_instead_of_exiting() {
+        let cfg = opsctl_core::GlobalConfig::default();
+        let result = handle_run(&cfg, Some("does-not-exist".to_string()));
+        assert!(result.is_err());
     }
 }

@@ -48,8 +48,7 @@ pub fn build_provider(account: &DnsAccount) -> Result<Box<dyn DnsProvider>, DnsE
     match account.provider {
         DnsProviderKind::Aliyun => {
             let id = required(account.access_key_id.as_deref(), "access_key_id")?;
-            let secret =
-                required(account.access_key_secret.as_deref(), "access_key_secret")?;
+            let secret = required(account.access_key_secret.as_deref(), "access_key_secret")?;
             Ok(Box::new(aliyun::AliyunProvider::new(id, secret)))
         }
         DnsProviderKind::Dnspod => {

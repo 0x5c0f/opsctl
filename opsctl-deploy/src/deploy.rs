@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
-use crate::types::{DeployContext, DeployResult};
 use crate::DeployError;
+use crate::types::{DeployContext, DeployResult};
+use std::path::{Path, PathBuf};
 
 /// 执行一次完整的部署流程
 ///
@@ -9,7 +9,12 @@ use crate::DeployError;
 pub fn run_deploy(ctx: &DeployContext, version_id: &str) -> DeployResult {
     let project = &ctx.project_name;
 
-    tracing::info!("开始部署: project={}, type={}, version={}", project, ctx.deploy_type, version_id);
+    tracing::info!(
+        "开始部署: project={}, type={}, version={}",
+        project,
+        ctx.deploy_type,
+        version_id
+    );
 
     let result = run_deploy_inner(ctx, version_id);
 
@@ -57,7 +62,10 @@ fn run_deploy_inner(ctx: &DeployContext, version_id: &str) -> Result<String, Dep
     // 3. 扫描上传目录
     let zip_path = crate::scanner::find_first_upload(&ctx.upload_dir, &ctx.project_name)?;
     let zip_path = zip_path.ok_or_else(|| {
-        DeployError::DeployFailed(format!("未找到匹配的 zip 文件 (project={})", ctx.project_name))
+        DeployError::DeployFailed(format!(
+            "未找到匹配的 zip 文件 (project={})",
+            ctx.project_name
+        ))
     })?;
     tracing::info!("找到上传文件: {:?}", zip_path);
 
@@ -81,7 +89,11 @@ fn run_deploy_inner(ctx: &DeployContext, version_id: &str) -> Result<String, Dep
             crate::static_deploy::static_deploy(&enabled_link, &ready_path)?;
         }
         opsctl_core::config::DeployType::Dynamic => {
-            tracing::info!("dynamic 部署: 拷贝覆盖 {:?} → {:?}", ready_path, &enabled_link);
+            tracing::info!(
+                "dynamic 部署: 拷贝覆盖 {:?} → {:?}",
+                ready_path,
+                &enabled_link
+            );
             copy_dir(&ready_path, &enabled_link)?;
         }
         opsctl_core::config::DeployType::Docker => {
@@ -124,9 +136,10 @@ fn run_deploy_inner(ctx: &DeployContext, version_id: &str) -> Result<String, Dep
 
 fn acquire_lock(lock_file: &Path) -> Result<(), DeployError> {
     if lock_file.exists() {
-        return Err(DeployError::LockSkipped(
-            format!("锁文件存在，跳过部署。删除 {} 后触发下次更新", lock_file.display()),
-        ));
+        return Err(DeployError::LockSkipped(format!(
+            "锁文件存在，跳过部署。删除 {} 后触发下次更新",
+            lock_file.display()
+        )));
     }
     std::fs::write(lock_file, format!("{}", std::process::id()))?;
     tracing::debug!("部署锁已创建: {:?}", lock_file);
@@ -171,7 +184,9 @@ fn lexical_absolute(path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")).join(path)
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("/"))
+            .join(path)
     };
     let mut normalized = PathBuf::new();
     for component in absolute.components() {
@@ -207,7 +222,8 @@ pub(crate) fn copy_dir(src: &Path, dst: &Path) -> Result<(), DeployError> {
 
     for entry in walkdir(src)? {
         let path = entry.path();
-        let relative = path.strip_prefix(src)
+        let relative = path
+            .strip_prefix(src)
             .map_err(|e| DeployError::DeployFailed(format!("路径错误: {e}")))?;
         let target = dst.join(relative);
 
@@ -249,7 +265,8 @@ mod tests {
     fn temp_dir(name: &str) -> std::path::PathBuf {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("opsctl_deploy_{name}_{}_{n}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("opsctl_deploy_{name}_{}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -265,7 +282,10 @@ mod tests {
         copy_dir(&src, &dst).unwrap();
 
         assert_eq!(std::fs::read_to_string(dst.join("new.dll")).unwrap(), "new");
-        assert_eq!(std::fs::read_to_string(dst.join("keep.txt")).unwrap(), "keep");
+        assert_eq!(
+            std::fs::read_to_string(dst.join("keep.txt")).unwrap(),
+            "keep"
+        );
 
         let _ = std::fs::remove_dir_all(src);
         let _ = std::fs::remove_dir_all(dst);

@@ -17,14 +17,12 @@ const DANGEROUS_COMMANDS: &[&str] = &[
 ];
 
 const DANGEROUS_BASE_COMMANDS: &[&str] = &[
-    "rm", "format", "del", "dd", "mkfs", "shutdown", "reboot", "poweroff",
-    "init", "halt", "mv", "chmod", "chown", "rmdir", "wipe", "fdisk",
-    "killall", "su", "curl", "wget", "eval", "bash", "sh", "python",
+    "rm", "format", "del", "dd", "mkfs", "shutdown", "reboot", "poweroff", "init", "halt", "mv",
+    "chmod", "chown", "rmdir", "wipe", "fdisk", "killall", "su", "curl", "wget", "eval", "bash",
+    "sh", "python",
 ];
 
-const DANGEROUS_PATTERNS: &[&str] = &[
-    ";", "|", "`", "$(", "eval ", "exec ", "&& rm", "> /dev/",
-];
+const DANGEROUS_PATTERNS: &[&str] = &[";", "|", "`", "$(", "eval ", "exec ", "&& rm", "> /dev/"];
 
 /// 命令安全检查：拒绝危险命令与未授权的 shell 组合。
 ///
@@ -48,9 +46,10 @@ pub fn safe_command_check(command: &str) -> Result<String, crate::DeployError> {
 
     for dangerous in DANGEROUS_COMMANDS {
         if trimmed.contains(dangerous) {
-            return Err(crate::DeployError::CommandRejected(
-                format!("危险命令被拦截: '{}' (匹配模式: '{}')", trimmed, dangerous),
-            ));
+            return Err(crate::DeployError::CommandRejected(format!(
+                "危险命令被拦截: '{}' (匹配模式: '{}')",
+                trimmed, dangerous
+            )));
         }
     }
 
@@ -124,7 +123,11 @@ pub fn execute_command(command: &str) -> Result<String, crate::DeployError> {
         }
         Ok(stdout)
     } else {
-        let msg = format!("命令执行失败 (exit: {:?}): {}", output.status.code(), stderr.trim());
+        let msg = format!(
+            "命令执行失败 (exit: {:?}): {}",
+            output.status.code(),
+            stderr.trim()
+        );
         tracing::error!("{}", msg);
         Err(crate::DeployError::DeployFailed(msg))
     }
@@ -136,8 +139,14 @@ mod tests {
 
     #[test]
     fn test_safe_command_allowed() {
-        assert_eq!(safe_command_check("systemctl restart nginx").unwrap(), "systemctl restart nginx");
-        assert_eq!(safe_command_check("docker-compose restart").unwrap(), "docker-compose restart");
+        assert_eq!(
+            safe_command_check("systemctl restart nginx").unwrap(),
+            "systemctl restart nginx"
+        );
+        assert_eq!(
+            safe_command_check("docker-compose restart").unwrap(),
+            "docker-compose restart"
+        );
     }
 
     #[test]

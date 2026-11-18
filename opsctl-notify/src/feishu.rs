@@ -1,5 +1,5 @@
-use crate::error::NotifyError;
 use crate::Notifier;
+use crate::error::NotifyError;
 use serde::Serialize;
 
 /// 飞书机器人 webhook 通知
@@ -60,12 +60,10 @@ impl Notifier for FeishuNotifier {
                     },
                     template: "blue".into(),
                 },
-                elements: vec![
-                    CardElement::Markdown {
-                        tag: "markdown".into(),
-                        content: message.to_string(),
-                    },
-                ],
+                elements: vec![CardElement::Markdown {
+                    tag: "markdown".into(),
+                    content: message.to_string(),
+                }],
             },
         };
 

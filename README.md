@@ -150,8 +150,7 @@ opsctl/
 ├── opsctl-cert/      # 证书能力
 ├── opsctl-notify/    # 通知能力
 ├── opsctl-dns/       # DNS 平台适配器与操作编排
-├── docs/
-│   └── ARCHITECTURE.md
+├── docs/             # 架构说明与审计记录
 ├── .github/workflows/
 │   ├── ci.yml
 │   └── release.yml
@@ -174,11 +173,15 @@ opsctl ──► opsctl-core
 ## 开发
 
 ```bash
-cargo check
-cargo test -- --test-threads=1
-cargo clippy
+cargo fmt --all --check
+cargo check --locked
+cargo test --locked -- --test-threads=1
+cargo clippy --locked
+cargo audit
 make release-static
 ```
+
+工具链由 `rust-toolchain.toml` 固定，CI 与本地保持一致。
 
 ## Release 规则
 

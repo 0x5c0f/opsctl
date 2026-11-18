@@ -1,5 +1,5 @@
-use crate::error::NotifyError;
 use crate::Notifier;
+use crate::error::NotifyError;
 use serde::Serialize;
 
 /// 企业微信机器人 webhook 通知

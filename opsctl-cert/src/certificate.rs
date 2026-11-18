@@ -23,8 +23,7 @@ pub fn parse_pem_certificate(pem_data: &str) -> Result<CertInfo, crate::CertErro
 
 /// 从 PEM 文件解析证书
 pub fn parse_pem_file(path: &Path) -> Result<CertInfo, crate::CertError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(crate::CertError::Io)?;
+    let content = std::fs::read_to_string(path).map_err(crate::CertError::Io)?;
 
     let (_, pem) = parse_x509_pem(content.as_bytes())
         .map_err(|e| crate::CertError::CertParse(format!("PEM 解析失败: {e}")))?;
@@ -37,7 +36,8 @@ pub fn parse_pem_file(path: &Path) -> Result<CertInfo, crate::CertError> {
 
 fn extract_cert_info(x509: &X509Certificate) -> Result<CertInfo, crate::CertError> {
     let subject = x509.subject();
-    let cn = subject.iter_common_name()
+    let cn = subject
+        .iter_common_name()
         .next()
         .map(|attr| attr.as_str().unwrap_or("").to_string())
         .unwrap_or_default();
@@ -61,7 +61,10 @@ fn extract_cert_info(x509: &X509Certificate) -> Result<CertInfo, crate::CertErro
     let main_domain = if !cn.is_empty() {
         cn
     } else {
-        domains.first().cloned().unwrap_or_else(|| "unknown".to_string())
+        domains
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string())
     };
 
     let validity = x509.validity();
@@ -88,7 +91,10 @@ fn timestamp_to_string(ts: i64) -> String {
     let mins = (time_secs % 3600) / 60;
     let secs = time_secs % 60;
     let (year, month, day) = days_to_date(days);
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, month, day, hours, mins, secs)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        year, month, day, hours, mins, secs
+    )
 }
 
 fn days_to_date(days: u64) -> (u64, u64, u64) {
@@ -96,15 +102,23 @@ fn days_to_date(days: u64) -> (u64, u64, u64) {
     let mut d = days as i64;
     loop {
         let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if d < days_in_year { break; }
+        if d < days_in_year {
+            break;
+        }
         d -= days_in_year;
         y += 1;
     }
-    let month_days = if is_leap(y) { [31,29,31,30,31,30,31,31,30,31,30,31] }
-                               else { [31,28,31,30,31,30,31,31,30,31,30,31] };
+    let month_days = if is_leap(y) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
     let mut m = 0u64;
     for (i, &md) in month_days.iter().enumerate() {
-        if d < md as i64 { m = i as u64; break; }
+        if d < md as i64 {
+            m = i as u64;
+            break;
+        }
         d -= md as i64;
     }
     (y as u64, m + 1, (d + 1) as u64)

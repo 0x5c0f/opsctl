@@ -77,7 +77,11 @@ impl MockServer {
                     body: String::from_utf8_lossy(&body).to_string(),
                 });
 
-                let reason = if response.status == 200 { "OK" } else { "Error" };
+                let reason = if response.status == 200 {
+                    "OK"
+                } else {
+                    "Error"
+                };
                 let header = format!(
                     "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     response.status,

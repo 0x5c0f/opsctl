@@ -49,13 +49,15 @@ impl CloudflareProvider {
                 .patch(&url)
                 .header("Authorization", &auth)
                 .header("Content-Type", "application/json")
-                .send_json(body.ok_or_else(|| DnsError::Validation("PATCH 缺少 JSON body".into()))?),
+                .send_json(
+                    body.ok_or_else(|| DnsError::Validation("PATCH 缺少 JSON body".into()))?,
+                ),
             "DELETE" => agent.delete(&url).header("Authorization", &auth).call(),
             other => {
                 return Err(DnsError::Api {
                     code: "UnsupportedMethod".into(),
                     message: format!("不支持的 HTTP 方法: {other}"),
-                })
+                });
             }
         };
 
@@ -90,19 +92,24 @@ impl CloudflareProvider {
             });
         }
 
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|e| DnsError::Api {
-                code: "InvalidJson".into(),
-                message: format!("响应解析失败: {e}"),
-            })?;
+        let value: Value = serde_json::from_str(&text).map_err(|e| DnsError::Api {
+            code: "InvalidJson".into(),
+            message: format!("响应解析失败: {e}"),
+        })?;
         if value.get("success").and_then(|v| v.as_bool()) != Some(true) {
             let (code, message) = value
                 .get("errors")
                 .and_then(|e| e.get(0))
                 .map(|e| {
                     (
-                        e.get("code").and_then(|c| c.as_i64()).unwrap_or(0).to_string(),
-                        e.get("message").and_then(|m| m.as_str()).unwrap_or("unknown").to_string(),
+                        e.get("code")
+                            .and_then(|c| c.as_i64())
+                            .unwrap_or(0)
+                            .to_string(),
+                        e.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("unknown")
+                            .to_string(),
                     )
                 })
                 .unwrap_or_else(|| ("unknown".into(), "Cloudflare API 返回失败".into()));
@@ -145,12 +152,13 @@ impl DnsProvider for CloudflareProvider {
                 &format!("/zones?page={page}&per_page={ZONE_PAGE_SIZE}"),
                 None,
             )?;
-            let result = value.get("result").and_then(|v| v.as_array()).ok_or_else(|| {
-                DnsError::Api {
+            let result = value
+                .get("result")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| DnsError::Api {
                     code: "InvalidResponse".into(),
                     message: "Cloudflare zones 响应缺少 result".into(),
-                }
-            })?;
+                })?;
             for item in result {
                 let Some(name) = item.get("name").and_then(|v| v.as_str()) else {
                     continue;
@@ -194,12 +202,13 @@ impl DnsProvider for CloudflareProvider {
                 ),
                 None,
             )?;
-            let result = value.get("result").and_then(|v| v.as_array()).ok_or_else(|| {
-                DnsError::Api {
+            let result = value
+                .get("result")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| DnsError::Api {
                     code: "InvalidResponse".into(),
                     message: "Cloudflare dns_records 响应缺少 result".into(),
-                }
-            })?;
+                })?;
             for item in result {
                 if let Some(record) = Self::parse_record(item, &zone.name) {
                     out.push(record);
@@ -290,10 +299,7 @@ impl DnsProvider for CloudflareProvider {
     fn delete_record(&self, zone: &ProviderZone, record_id: &str) -> Result<(), DnsError> {
         self.request(
             "DELETE",
-            &format!(
-                "/zones/{}/dns_records/{record_id}",
-                zone.provider_domain_id
-            ),
+            &format!("/zones/{}/dns_records/{record_id}", zone.provider_domain_id),
             None,
         )?;
         Ok(())
@@ -318,9 +324,9 @@ impl DnsProvider for CloudflareProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DnsError;
     use crate::providers::test_server::{MockResponse, MockServer};
     use crate::types::{ProviderZone, RecordInput, RecordUpdate};
-    use crate::DnsError;
 
     const ZONES: &str = r#"{
         "success": true,

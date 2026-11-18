@@ -1,8 +1,7 @@
 use opsctl_core::config::{DnsAccount, DnsConfig, DnsProviderKind};
 
 use crate::{
-    DnsError, ProviderRecord, ProviderZone, RecordInput, RecordUpdate,
-    providers::build_provider,
+    DnsError, ProviderRecord, ProviderZone, RecordInput, RecordUpdate, providers::build_provider,
 };
 
 /// 根据 `--account` 选择账户；未指定时返回全部已配置账户。
@@ -136,9 +135,7 @@ pub fn record_update(
         && proxied.is_none()
         && remark.is_none()
     {
-        return Err(DnsError::Validation(
-            "至少提供一个要修改的字段".into(),
-        ));
+        return Err(DnsError::Validation("至少提供一个要修改的字段".into()));
     }
     Ok(RecordUpdate {
         host: host.map(crate::validation::validate_host).transpose()?,

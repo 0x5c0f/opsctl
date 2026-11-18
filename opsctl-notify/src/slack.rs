@@ -1,5 +1,5 @@
-use crate::error::NotifyError;
 use crate::Notifier;
+use crate::error::NotifyError;
 use serde::Serialize;
 
 /// Slack Incoming Webhook 通知

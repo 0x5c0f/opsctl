@@ -1,7 +1,7 @@
+use crate::DeployError;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
-use crate::DeployError;
 
 /// 版本历史记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,8 @@ pub fn save_history(basedir: &Path, records: &[VersionRecord]) -> Result<(), Dep
     let path = basedir.join("enabled").join(".history.toml");
     // 确保 enabled 目录存在
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| DeployError::Config(format!("创建 enabled 目录失败: {e}")))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| DeployError::Config(format!("创建 enabled 目录失败: {e}")))?;
     }
     let wrapper = HistoryFile {
         version_record: records.to_vec(),
@@ -61,7 +62,12 @@ pub fn save_history(basedir: &Path, records: &[VersionRecord]) -> Result<(), Dep
 }
 
 /// 记录一次新部署（追加到历史记录中）
-pub fn record_deployment(basedir: &Path, project: &str, version_id: &str, ready_dir: &Path) -> Result<(), DeployError> {
+pub fn record_deployment(
+    basedir: &Path,
+    project: &str,
+    version_id: &str,
+    ready_dir: &Path,
+) -> Result<(), DeployError> {
     let mut records = load_history(basedir)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -89,9 +95,14 @@ pub fn record_deployment(basedir: &Path, project: &str, version_id: &str, ready_
 }
 
 /// 获取指定项目的历史记录（按时间倒序）
-pub fn get_project_history(basedir: &Path, project: &str, limit: usize) -> Result<Vec<VersionRecord>, DeployError> {
+pub fn get_project_history(
+    basedir: &Path,
+    project: &str,
+    limit: usize,
+) -> Result<Vec<VersionRecord>, DeployError> {
     let records = load_history(basedir)?;
-    let mut project_records: Vec<VersionRecord> = records.into_iter()
+    let mut project_records: Vec<VersionRecord> = records
+        .into_iter()
         .filter(|r| r.project == project)
         .collect();
     project_records.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
@@ -103,21 +114,28 @@ pub fn get_project_history(basedir: &Path, project: &str, limit: usize) -> Resul
 pub fn rollback_to(basedir: &Path, version_id: &str) -> Result<(), DeployError> {
     let records = load_history(basedir)?;
 
-    let target = records.iter()
+    let target = records
+        .iter()
         .find(|r| r.id == version_id)
         .ok_or_else(|| DeployError::DeployFailed(format!("未找到版本: {}", version_id)))?;
 
     let ready_dir = PathBuf::from(&target.ready_dir);
     if !ready_dir.exists() {
-        return Err(DeployError::DeployFailed(format!("版本目录不存在: {:?}", ready_dir)));
+        return Err(DeployError::DeployFailed(format!(
+            "版本目录不存在: {:?}",
+            ready_dir
+        )));
     }
 
     let enabled_dir = basedir.join("enabled");
     let enabled_link = enabled_dir.join(format!("{}_latest", target.project));
 
     // 删除当前软链接
-    if enabled_link.is_symlink() { std::fs::remove_file(&enabled_link)?; }
-    else if enabled_link.is_dir() { std::fs::remove_dir_all(&enabled_link)?; }
+    if enabled_link.is_symlink() {
+        std::fs::remove_file(&enabled_link)?;
+    } else if enabled_link.is_dir() {
+        std::fs::remove_dir_all(&enabled_link)?;
+    }
 
     // 创建新软链接指向目标版本
     #[cfg(unix)]
@@ -127,7 +145,8 @@ pub fn rollback_to(basedir: &Path, version_id: &str) -> Result<(), DeployError> 
 
     // 更新历史记录 — 收集索引独立处理，避免借用人问题
     let target_project = target.project.clone();
-    let updated_records: Vec<VersionRecord> = records.into_iter()
+    let updated_records: Vec<VersionRecord> = records
+        .into_iter()
         .map(|mut r| {
             if r.project == target_project && matches!(r.status, VersionStatus::Active) {
                 r.status = VersionStatus::RolledBack;
@@ -149,14 +168,16 @@ pub fn cleanup_old_versions(basedir: &Path, project: &str, keep: usize) -> Resul
     let records = load_history(basedir)?;
 
     // 收集该项目的索引和引用，按时间排序
-    let mut project_indices: Vec<(usize, &VersionRecord)> = records.iter()
+    let mut project_indices: Vec<(usize, &VersionRecord)> = records
+        .iter()
         .enumerate()
         .filter(|(_, r)| r.project == project)
         .collect();
     project_indices.sort_by_key(|(_, b)| std::cmp::Reverse(b.timestamp));
 
     // 确定需清理的索引（超出 keep 且不是 active 或已 cleaned）
-    let to_clean: Vec<usize> = project_indices.iter()
+    let to_clean: Vec<usize> = project_indices
+        .iter()
         .enumerate()
         .filter(|(idx, (_, r))| {
             *idx >= keep
@@ -195,15 +216,18 @@ pub fn cleanup_old_versions(basedir: &Path, project: &str, keep: usize) -> Resul
 
 /// 列出版本历史（人类可读格式）
 pub fn format_history(records: &[VersionRecord]) -> Vec<String> {
-    records.iter().map(|r| {
-        let time_str = format_timestamp(r.timestamp);
-        let status_str = match r.status {
-            VersionStatus::Active => "✅ active",
-            VersionStatus::RolledBack => "↩️ rolled_back",
-            VersionStatus::Cleaned => "🗑️ cleaned",
-        };
-        format!("{:<25} {}  {}  {}", r.id, time_str, status_str, r.project)
-    }).collect()
+    records
+        .iter()
+        .map(|r| {
+            let time_str = format_timestamp(r.timestamp);
+            let status_str = match r.status {
+                VersionStatus::Active => "✅ active",
+                VersionStatus::RolledBack => "↩️ rolled_back",
+                VersionStatus::Cleaned => "🗑️ cleaned",
+            };
+            format!("{:<25} {}  {}  {}", r.id, time_str, status_str, r.project)
+        })
+        .collect()
 }
 
 fn format_timestamp(ts: u64) -> String {
@@ -213,7 +237,10 @@ fn format_timestamp(ts: u64) -> String {
     let mins = (time_secs % 3600) / 60;
     let secs = time_secs % 60;
     let (year, month, day) = days_to_date(days);
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, month, day, hours, mins, secs)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        year, month, day, hours, mins, secs
+    )
 }
 
 fn days_to_date(days: u64) -> (u64, u64, u64) {
@@ -221,15 +248,23 @@ fn days_to_date(days: u64) -> (u64, u64, u64) {
     let mut d = days as i64;
     loop {
         let days_in_year = if is_leap(y) { 366 } else { 365 };
-        if d < days_in_year { break; }
+        if d < days_in_year {
+            break;
+        }
         d -= days_in_year;
         y += 1;
     }
-    let month_days = if is_leap(y) { [31,29,31,30,31,30,31,31,30,31,30,31] }
-                               else { [31,28,31,30,31,30,31,31,30,31,30,31] };
+    let month_days = if is_leap(y) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
     let mut m = 0u64;
     for (i, &md) in month_days.iter().enumerate() {
-        if d < md as i64 { m = i as u64; break; }
+        if d < md as i64 {
+            m = i as u64;
+            break;
+        }
         d -= md as i64;
     }
     (y as u64, m + 1, (d + 1) as u64)

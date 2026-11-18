@@ -1,10 +1,14 @@
 use opsctl_core::GlobalConfig;
+use opsctl_core::OpsctlError;
+
+use super::HandlerResult;
 
 /// 处理 `opsctl cert update`
-pub fn handle_update(global_cfg: &GlobalConfig, cert_id: Option<u32>) {
+pub fn handle_update(global_cfg: &GlobalConfig, cert_id: Option<u32>) -> HandlerResult {
     if global_cfg.cert.certd_base_url.is_empty() {
-        eprintln!("错误: 未配置 certd (请在 ~/.opsctl/config.toml 中设置 [cert] 段)");
-        std::process::exit(1);
+        return Err(OpsctlError::Other(
+            "未配置 certd (请在 ~/.opsctl/config.toml 中设置 [cert] 段)".into(),
+        ));
     }
 
     let mut cert_config = global_cfg.cert.clone();
@@ -40,25 +44,18 @@ pub fn handle_update(global_cfg: &GlobalConfig, cert_id: Option<u32>) {
             }
 
             if !changed_lines.is_empty() || !failed_lines.is_empty() {
-                let title = cert_update_notification_title(
-                    changed_lines.len(),
-                    failed_lines.len(),
-                );
+                let title = cert_update_notification_title(changed_lines.len(), failed_lines.len());
                 let mut lines = changed_lines;
                 lines.extend(failed_lines);
                 send_cert_notification(global_cfg, &title, &lines);
             }
         }
         Err(e) => {
-            eprintln!("❌ 证书更新失败: {e}");
-            send_cert_notification(
-                global_cfg,
-                "cert update failed",
-                &[format!("❌ {e}")],
-            );
-            std::process::exit(1);
+            send_cert_notification(global_cfg, "cert update failed", &[format!("❌ {e}")]);
+            return Err(OpsctlError::Other(format!("证书更新失败: {e}")));
         }
     }
+    Ok(())
 }
 
 pub(crate) fn cert_update_notification_title(changed: usize, failed: usize) -> String {
@@ -82,35 +79,39 @@ fn execute_restart_command(command: &str) -> Result<(), String> {
 }
 
 /// 处理 `opsctl cert list`
-pub fn handle_list(global_cfg: &GlobalConfig) {
+pub fn handle_list(global_cfg: &GlobalConfig) -> HandlerResult {
     match opsctl_cert::list_certs(&global_cfg.cert) {
         Ok(entries) => {
             if entries.is_empty() {
                 println!("暂无本地证书");
-                return;
+                return Ok(());
             }
             println!("{:<6}  {:<30}  {:<19}  状态", "ID", "域名", "过期时间");
             println!("{}", "-".repeat(72));
             for e in &entries {
-                let id = e.cert_id.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                let id = e
+                    .cert_id
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".into());
                 let status = match e.remaining_days {
                     Some(days) if days > 30 => format!("✅ {} 天", days),
-                    Some(days) if days > 0  => format!("⚠️ {} 天", days),
+                    Some(days) if days > 0 => format!("⚠️ {} 天", days),
                     Some(_) => "❌ 已过期".to_string(),
-                    None    => "❌ 已过期".to_string(),
+                    None => "❌ 已过期".to_string(),
                 };
-                println!("{:<6}  {:<30}  {:<19}  {}", id, e.domain, e.not_after, status);
+                println!(
+                    "{:<6}  {:<30}  {:<19}  {}",
+                    id, e.domain, e.not_after, status
+                );
             }
         }
-        Err(e) => {
-            eprintln!("错误: {e}");
-            std::process::exit(1);
-        }
+        Err(e) => return Err(OpsctlError::Other(e.to_string())),
     }
+    Ok(())
 }
 
 /// 处理 `opsctl cert check`
-pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) {
+pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) -> HandlerResult {
     let mut cert_config = global_cfg.cert.clone();
     cert_config.check.warn_days = warn_days;
 
@@ -126,7 +127,11 @@ pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) {
             }
             if !result.expiring.is_empty() {
                 has_issues = true;
-                println!("⚠️ {} 个证书将在 {} 天内过期:", result.expiring.len(), warn_days);
+                println!(
+                    "⚠️ {} 个证书将在 {} 天内过期:",
+                    result.expiring.len(),
+                    warn_days
+                );
                 for e in &result.expiring {
                     let days = e.remaining_days.unwrap_or(0);
                     println!("  - {} (还剩 {} 天)", e.domain, days);
@@ -136,7 +141,8 @@ pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) {
                 println!("✅ 所有证书正常");
             }
             if cert_config.check.notification && has_issues {
-                let notifier = opsctl_notify::NotifyManager::from_config(&global_cfg.notify.webhooks);
+                let notifier =
+                    opsctl_notify::NotifyManager::from_config(&global_cfg.notify.webhooks);
                 if !notifier.is_empty() {
                     let mut lines = Vec::new();
                     for e in &result.expired {
@@ -150,11 +156,9 @@ pub fn handle_check(global_cfg: &GlobalConfig, warn_days: u32) {
                 }
             }
         }
-        Err(e) => {
-            eprintln!("错误: {e}");
-            std::process::exit(1);
-        }
+        Err(e) => return Err(OpsctlError::Other(e.to_string())),
     }
+    Ok(())
 }
 
 #[cfg(test)]

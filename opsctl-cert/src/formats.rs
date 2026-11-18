@@ -1,13 +1,13 @@
-use std::path::Path;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
 /// 证书各部分数据
 pub struct CertParts {
-    pub crt: String,        // 完整证书链 (fullchain)
-    pub key: String,        // 私钥
-    pub ic: Option<String>, // 中间证书
-    pub oc: Option<String>, // 服务器证书
+    pub crt: String,         // 完整证书链 (fullchain)
+    pub key: String,         // 私钥
+    pub ic: Option<String>,  // 中间证书
+    pub oc: Option<String>,  // 服务器证书
     pub pfx: Option<String>, // PFX 格式，Base64 编码
     pub der: Option<String>, // DER 格式，Base64 编码
     pub jks: Option<String>, // JKS 格式，Base64 编码
@@ -81,9 +81,9 @@ fn write_base64(domain_dir: &Path, name: &str, data: Option<&str>) -> Result<(),
         tracing::warn!("API 未返回 {name}，跳过");
         return Ok(());
     };
-    let decoded = BASE64.decode(encoded).map_err(|e| {
-        crate::CertError::Config(format!("{name} 不是合法 Base64 数据: {e}"))
-    })?;
+    let decoded = BASE64
+        .decode(encoded)
+        .map_err(|e| crate::CertError::Config(format!("{name} 不是合法 Base64 数据: {e}")))?;
     write_file(domain_dir, name, &decoded)
 }
 
@@ -211,6 +211,9 @@ mod tests {
         std::fs::write(&file, b"hello world").unwrap();
         let hash = file_sha256(&file).unwrap();
         assert_eq!(hash.len(), 64);
-        assert_eq!(hash, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+        assert_eq!(
+            hash,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
     }
 }

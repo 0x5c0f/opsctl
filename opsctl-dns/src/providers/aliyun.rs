@@ -90,10 +90,9 @@ fn map_error(body: &Value) -> DnsError {
         | "SignatureDoesNotMatch"
         | "Forbidden"
         | "Unauthorized" => DnsError::Auth(format!("阿里云凭据无效: {message}")),
-        "Throttling"
-        | "Throttling.User"
-        | "Throttling.UserQos"
-        | "FlowLimitExceeded" => DnsError::RateLimited(format!("阿里云限流: {message}")),
+        "Throttling" | "Throttling.User" | "Throttling.UserQos" | "FlowLimitExceeded" => {
+            DnsError::RateLimited(format!("阿里云限流: {message}"))
+        }
         "InvalidDomain.NotFound" | "InvalidRecord.NotFound" | "DomainNotExists" => {
             DnsError::NotFound(message)
         }
@@ -386,9 +385,9 @@ impl DnsProvider for AliyunProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DnsError;
     use crate::providers::test_server::{MockResponse, MockServer};
     use crate::types::{ProviderZone, RecordInput, RecordUpdate};
-    use crate::DnsError;
     use std::collections::BTreeMap;
 
     #[test]
@@ -561,8 +560,10 @@ mod tests {
             provider_domain_id: String::new(),
         };
         provider.delete_record(&zone, "rec-1").unwrap();
-        assert!(server.requests()[0]
-            .path
-            .contains("Action=DeleteDomainRecord"));
+        assert!(
+            server.requests()[0]
+                .path
+                .contains("Action=DeleteDomainRecord")
+        );
     }
 }

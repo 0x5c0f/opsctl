@@ -10,7 +10,11 @@ pub fn build_deploy_message(
     message: &str,
 ) -> (String, String) {
     let status_emoji = if success { "✅" } else { "❌" };
-    let status_text = if success { "部署成功" } else { "部署失败" };
+    let status_text = if success {
+        "部署成功"
+    } else {
+        "部署失败"
+    };
     let now = format_timestamp();
 
     let title = format!("{} {} · {}", status_emoji, status_text, project);
@@ -24,13 +28,13 @@ pub fn build_deploy_message(
 }
 
 /// 构建证书更新通知消息
-pub fn build_cert_message(
-    domain: &str,
-    success: bool,
-    message: &str,
-) -> (String, String) {
+pub fn build_cert_message(domain: &str, success: bool, message: &str) -> (String, String) {
     let status_emoji = if success { "🔒" } else { "❌" };
-    let status_text = if success { "证书更新成功" } else { "证书更新失败" };
+    let status_text = if success {
+        "证书更新成功"
+    } else {
+        "证书更新失败"
+    };
     let now = format_timestamp();
 
     let title = format!("{} {} · {}", status_emoji, status_text, domain);
@@ -44,10 +48,7 @@ pub fn build_cert_message(
 }
 
 /// 构建证书检查通知消息
-pub fn build_cert_check_message(
-    summary: &str,
-    details: &str,
-) -> (String, String) {
+pub fn build_cert_check_message(summary: &str, details: &str) -> (String, String) {
     let now = format_timestamp();
     let title = format!("🔍 证书检查报告 · {}", now);
 
@@ -76,9 +77,8 @@ mod tests {
 
     #[test]
     fn test_build_deploy_message_success() {
-        let (title, body) = build_deploy_message(
-            "myapp", "v1", true, &DeployType::Static, "deploy ok"
-        );
+        let (title, body) =
+            build_deploy_message("myapp", "v1", true, &DeployType::Static, "deploy ok");
         assert!(title.contains("✅"));
         assert!(title.contains("myapp"));
         assert!(body.contains("myapp"));
@@ -89,9 +89,8 @@ mod tests {
 
     #[test]
     fn test_build_deploy_message_failure() {
-        let (title, body) = build_deploy_message(
-            "myapp", "v2", false, &DeployType::Docker, "timeout"
-        );
+        let (title, body) =
+            build_deploy_message("myapp", "v2", false, &DeployType::Docker, "timeout");
         assert!(title.contains("❌"));
         assert!(body.contains("docker"));
         assert!(body.contains("timeout"));
